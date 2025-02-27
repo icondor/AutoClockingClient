@@ -50,3 +50,9 @@ Client/MacOS/dist/
 Client/MacOS/tmp/
 Client/MacOS/__pycache__/
 dist
+distwin
+
+
+Client/Windows/build/
+Client/Windows/dist/
+Client/Windows/tmp/
