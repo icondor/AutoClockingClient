@@ -1,0 +1,11 @@
+{
+    "server": {
+        "url": "http://localhost:3000",
+        "timeout_seconds": 30,
+        "max_retry_attempts": 10,
+        "retry_delay_seconds": 60
+    },
+    "application": {
+        "startup_delay_seconds": 10
+    }
+}

@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution/packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Logs and temp files
+*.log
+temp/
+*.tmp
+
+# Project specific
+AttendanceTracker.zip
+last_success.txt
+
+# Client/MacOS specific
+Client/MacOS/build/
+Client/MacOS/dist/
+Client/MacOS/tmp/
+Client/MacOS/__pycache__/
+dist
