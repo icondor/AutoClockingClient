@@ -26,7 +26,7 @@ rm -rf ~/Library/Caches/com.apple.python/
 rm -rf ~/Library/Caches/pip
 
 # Install Windows dependencies
-pip3 install --use-pep517 requests
+pip3 install --use-pep517 requests pywin32 pyinstaller-hooks-contrib
 
 # Create distwin directory
 mkdir -p distwin
@@ -37,19 +37,9 @@ mkdir -p dist && \
 pyinstaller power_monitor.spec \
           --distpath ./dist \
           --workpath ./build && \
-pyinstaller --clean \
-          --name AttendanceTracker \
-          --onefile \
-          --add-data "config.json:." \
-          --hidden-import win32api \
-          --hidden-import win32con \
-          --hidden-import win32event \
-          --hidden-import win32service \
-          --hidden-import win32serviceutil \
-          --hidden-import win32com.client \
+pyinstaller AttendanceTracker.spec \
           --distpath ./dist \
-          --workpath ./build \
-          AttendanceTracker.py && \
+          --workpath ./build && \
 cd ../..
 
 # Wait for build to complete and check success
@@ -75,6 +65,7 @@ cp Client/Windows/dist/AttendanceTracker distwin/package/AttendanceTracker.exe |
 cp Client/Windows/config.json distwin/package/ || { echo "❌ Failed to copy config"; exit 1; }
 cp Client/Windows/test_install.bat distwin/package/ || { echo "❌ Failed to copy install script"; exit 1; }
 cp Client/Windows/uninstall.bat distwin/package/ || { echo "❌ Failed to copy uninstall script"; exit 1; }
+cp Client/Windows/start.bat distwin/package/ || { echo "❌ Failed to copy start script"; exit 1; }
 
 echo "✅ Windows package prepared successfully"
 
@@ -82,6 +73,9 @@ echo "✅ Windows package prepared successfully"
 echo "Creating zip package..."
 cd distwin
 zip -r AttendanceTracker_Windows.zip package/
+
+cp AttendanceTracker_Windows.zip ~/Public/
+
 cd ..
 
 echo "✅ AttendanceTracker_Windows.zip created successfully" 

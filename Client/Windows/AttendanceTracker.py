@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import logging
+import uuid
 
 # Setup logger
 logger = logging.getLogger('AttendanceTracker')
@@ -41,6 +42,21 @@ def get_hostname():
     hostname = socket.gethostname()
     # Take everything before the first dot
     return hostname.split('.')[0]
+
+def validate_server_config(config):
+    if not config['server']['url'].startswith('https://'):
+        logging.warning("Using insecure HTTP connection")
+    
+    try:
+        socket.gethostbyname(config['server']['url'].split('://')[1].split(':')[0])
+    except:
+        logging.error("Cannot resolve server hostname")
+        return False
+    return True
+
+def get_machine_id():
+    # Use more reliable machine identification
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, socket.gethostname()))
 
 def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
     url = config['server']['url'] + '/checkin'

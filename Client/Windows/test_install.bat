@@ -37,5 +37,25 @@ if !errorlevel! equ 0 (
     exit /b 1
 )
 
+:: Check prerequisites
+ver | find "10." >nul || (
+    echo "Windows 10 or later required"
+    exit /b 1
+)
+
+:: Verify disk space
+dir /a /-c "%APPDATA%\" | find "bytes free" | for /f "tokens=1,2" %%a in ('more') do (
+    if %%a LSS 10485760 (
+        echo "Insufficient disk space"
+        exit /b 1
+    )
+)
+
+:: Verify services
+sc query "Schedule" | find "RUNNING" >nul || (
+    echo "Task Scheduler service not running"
+    exit /b 1
+)
+
 echo Installation completed successfully
 exit /b 0 

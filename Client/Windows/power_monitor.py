@@ -12,6 +12,8 @@ import subprocess
 from pathlib import Path
 import win32com.client
 import pythoncom
+import time
+import winerror
 
 class PowerMonitor:
     def __init__(self):
@@ -76,6 +78,39 @@ def WaitForEvent():
                 monitor.handleEvent("unlock")
         except:
             pass
+
+def ensure_single_instance():
+    mutex = win32event.CreateMutex(None, 1, "Global\\AttendanceTracker")
+    if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+        return False
+    return True
+
+def cleanup_old_logs():
+    # Keep last 7 days of logs
+    log_retention_days = 7
+    for root, _, files in os.walk(LOG_DIR):
+        for f in files:
+            if f.endswith('.log'):
+                fpath = os.path.join(root, f)
+                if time.time() - os.path.getmtime(fpath) > log_retention_days * 86400:
+                    os.remove(fpath)
+
+def recover_from_crash():
+    # Clean up any leftover files
+    pid_file = os.path.join(APP_SUPPORT, 'power_monitor.pid')
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file) as f:
+                old_pid = int(f.read())
+            try:
+                os.kill(old_pid, 0)
+                logging.error(f"Process {old_pid} still running")
+                return False
+            except OSError:
+                os.remove(pid_file)
+        except:
+            os.remove(pid_file)
+    return True
 
 if __name__ == '__main__':
     try:
