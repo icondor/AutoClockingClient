@@ -21,7 +21,7 @@ xcopy /Y "config.json" "%APP_SUPPORT%\" >nul
 
 :: Create scheduled task for power_monitor
 echo Creating scheduled task...
-schtasks /Create /TN "AttendanceTracker\PowerMonitor" /TR "'%APP_SUPPORT%\power_monitor.exe'" /SC ONLOGON /IT /NP /RL LIMITED /F
+schtasks /Create /TN "AttendanceTracker\PowerMonitor" /TR "'%APP_SUPPORT%\power_monitor.exe'" /SC ONLOGON /RL LIMITED /F
 
 :: Start the monitor
 echo Starting PowerMonitor...
