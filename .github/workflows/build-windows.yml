@@ -28,29 +28,53 @@ jobs:
 
     - name: Build executables
       run: |
-        cd Client/Windows
+        cd Client\Windows
+        if not exist "dist" mkdir dist
         pyinstaller power_monitor.spec
+        if not exist "dist\power_monitor.exe" (
+          echo Error: Failed to build power_monitor.exe
+          exit 1
+        )
         pyinstaller AttendanceTracker.spec
-        cd ../..
+        if not exist "dist\AttendanceTracker.exe" (
+          echo Error: Failed to build AttendanceTracker.exe
+          exit 1
+        )
+        cd ..\..
 
     - name: Prepare package
       run: |
-        mkdir -p distwin/package
-        copy Client\Windows\dist\power_monitor.exe distwin\package\
-        copy Client\Windows\dist\AttendanceTracker.exe distwin\package\
-        copy Client\Windows\config.json distwin\package\
-        copy Client\Windows\test_install.bat distwin\package\
-        copy Client\Windows\uninstall.bat distwin\package\
-        copy Client\Windows\start.bat distwin\package\
+        if not exist "distwin" mkdir distwin
+        if not exist "distwin\package" mkdir distwin\package
+        
+        echo Copying files to package directory...
+        xcopy /Y "Client\Windows\dist\power_monitor.exe" "distwin\package\"
+        if errorlevel 1 (
+          echo Error: Failed to copy power_monitor.exe
+          exit 1
+        )
+        xcopy /Y "Client\Windows\dist\AttendanceTracker.exe" "distwin\package\"
+        if errorlevel 1 (
+          echo Error: Failed to copy AttendanceTracker.exe
+          exit 1
+        )
+        xcopy /Y "Client\Windows\config.json" "distwin\package\"
+        xcopy /Y "Client\Windows\test_install.bat" "distwin\package\"
+        xcopy /Y "Client\Windows\uninstall.bat" "distwin\package\"
+        xcopy /Y "Client\Windows\start.bat" "distwin\package\"
 
     - name: Create ZIP archive
+      shell: pwsh  # Using PowerShell for better ZIP handling
       run: |
-        cd distwin
-        powershell Compress-Archive -Path package\* -DestinationPath AttendanceTracker_Windows.zip
-        cd ..
+        Set-Location distwin
+        Compress-Archive -Path "package\*" -DestinationPath "AttendanceTracker_Windows.zip" -Force
+        if (-not (Test-Path "AttendanceTracker_Windows.zip")) {
+            Write-Error "Failed to create ZIP file"
+            exit 1
+        }
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: AttendanceTracker-Windows-x64
-        path: distwin/AttendanceTracker_Windows.zip 
+        path: distwin/AttendanceTracker_Windows.zip
