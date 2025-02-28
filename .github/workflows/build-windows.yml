@@ -27,41 +27,49 @@ jobs:
         pip install --use-pep517 requests pywin32 pyinstaller-hooks-contrib
 
     - name: Build executables
+      shell: pwsh  # Explicitly use PowerShell
       run: |
-        cd Client\Windows
-        if not exist "dist" mkdir dist
+        Set-Location Client\Windows
+        if (-not (Test-Path "dist")) {
+            New-Item -ItemType Directory -Path "dist"
+        }
         pyinstaller power_monitor.spec
-        if not exist "dist\power_monitor.exe" (
-          echo Error: Failed to build power_monitor.exe
-          exit 1
-        )
+        if (-not (Test-Path "dist\power_monitor.exe")) {
+            Write-Error "Failed to build power_monitor.exe"
+            exit 1
+        }
         pyinstaller AttendanceTracker.spec
-        if not exist "dist\AttendanceTracker.exe" (
-          echo Error: Failed to build AttendanceTracker.exe
-          exit 1
-        )
-        cd ..\..
+        if (-not (Test-Path "dist\AttendanceTracker.exe")) {
+            Write-Error "Failed to build AttendanceTracker.exe"
+            exit 1
+        }
+        Set-Location ..\..
 
     - name: Prepare package
+      shell: pwsh  # Explicitly use PowerShell
       run: |
-        if not exist "distwin" mkdir distwin
-        if not exist "distwin\package" mkdir distwin\package
+        if (-not (Test-Path "distwin")) {
+            New-Item -ItemType Directory -Path "distwin"
+        }
+        if (-not (Test-Path "distwin\package")) {
+            New-Item -ItemType Directory -Path "distwin\package"
+        }
         
-        echo Copying files to package directory...
-        xcopy /Y "Client\Windows\dist\power_monitor.exe" "distwin\package\"
-        if errorlevel 1 (
-          echo Error: Failed to copy power_monitor.exe
-          exit 1
-        )
-        xcopy /Y "Client\Windows\dist\AttendanceTracker.exe" "distwin\package\"
-        if errorlevel 1 (
-          echo Error: Failed to copy AttendanceTracker.exe
-          exit 1
-        )
-        xcopy /Y "Client\Windows\config.json" "distwin\package\"
-        xcopy /Y "Client\Windows\test_install.bat" "distwin\package\"
-        xcopy /Y "Client\Windows\uninstall.bat" "distwin\package\"
-        xcopy /Y "Client\Windows\start.bat" "distwin\package\"
+        Write-Host "Copying files to package directory..."
+        Copy-Item "Client\Windows\dist\power_monitor.exe" "distwin\package\" -Force
+        if (-not $?) {
+            Write-Error "Failed to copy power_monitor.exe"
+            exit 1
+        }
+        Copy-Item "Client\Windows\dist\AttendanceTracker.exe" "distwin\package\" -Force
+        if (-not $?) {
+            Write-Error "Failed to copy AttendanceTracker.exe"
+            exit 1
+        }
+        Copy-Item "Client\Windows\config.json" "distwin\package\" -Force
+        Copy-Item "Client\Windows\test_install.bat" "distwin\package\" -Force
+        Copy-Item "Client\Windows\uninstall.bat" "distwin\package\" -Force
+        Copy-Item "Client\Windows\start.bat" "distwin\package\" -Force
 
     - name: Create ZIP archive
       shell: pwsh  # Using PowerShell for better ZIP handling
