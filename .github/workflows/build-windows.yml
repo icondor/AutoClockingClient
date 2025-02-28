@@ -1,0 +1,56 @@
+name: Build Windows Executables
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  build-windows:
+    runs-on: windows-latest  # This ensures we get a 64-bit Windows environment
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        architecture: 'x64'  # Explicitly request 64-bit Python
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install --use-pep517 requests pywin32 pyinstaller-hooks-contrib
+
+    - name: Build executables
+      run: |
+        cd Client/Windows
+        pyinstaller power_monitor.spec
+        pyinstaller AttendanceTracker.spec
+        cd ../..
+
+    - name: Prepare package
+      run: |
+        mkdir -p distwin/package
+        copy Client\Windows\dist\power_monitor.exe distwin\package\
+        copy Client\Windows\dist\AttendanceTracker.exe distwin\package\
+        copy Client\Windows\config.json distwin\package\
+        copy Client\Windows\test_install.bat distwin\package\
+        copy Client\Windows\uninstall.bat distwin\package\
+        copy Client\Windows\start.bat distwin\package\
+
+    - name: Create ZIP archive
+      run: |
+        cd distwin
+        powershell Compress-Archive -Path package\* -DestinationPath AttendanceTracker_Windows.zip
+        cd ..
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: AttendanceTracker-Windows-x64
+        path: distwin/AttendanceTracker_Windows.zip 
