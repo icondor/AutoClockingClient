@@ -67,17 +67,11 @@ jobs:
         Copy-Item "Client\Windows\uninstall.bat" "package_win\" -Force
         Copy-Item "Client\Windows\start.bat" "package_win\" -Force
         
-        Write-Host "Package contents before zipping:"
+        Write-Host "Final package contents:"
         Get-ChildItem "package_win" | Format-Table Name, Length
-        
-        Write-Host "Creating ZIP archive..."
-        Compress-Archive -Path "package_win\*" -DestinationPath "AttendanceTracker_Windows.zip" -Force
-        
-        Write-Host "Final ZIP file details:"
-        Get-Item "AttendanceTracker_Windows.zip" | Format-Table Name, Length
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: AttendanceTracker-Windows-x64
-        path: AttendanceTracker_Windows.zip
+        path: package_win
