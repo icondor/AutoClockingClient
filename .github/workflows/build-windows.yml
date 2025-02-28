@@ -31,45 +31,49 @@ jobs:
       run: |
         Set-Location Client\Windows
         Write-Host "Building power_monitor.exe..."
-        pyinstaller power_monitor.spec
+        pyinstaller --clean power_monitor.spec
         if (-not (Test-Path "dist\power_monitor.exe")) {
             Write-Error "Failed to build power_monitor.exe"
             exit 1
         }
         
         Write-Host "Building AttendanceTracker.exe..."
-        pyinstaller AttendanceTracker.spec
+        pyinstaller --clean AttendanceTracker.spec
         if (-not (Test-Path "dist\AttendanceTracker.exe")) {
             Write-Error "Failed to build AttendanceTracker.exe"
             exit 1
         }
+        
+        # List contents of dist directory to verify
+        Write-Host "Contents of PyInstaller dist directory:"
+        Get-ChildItem "dist" | Format-Table Name, Length
         Set-Location ..\..
 
     - name: Create distribution package
       shell: pwsh  # Explicitly use PowerShell
       run: |
-        Write-Host "Creating distribution package..."
+        Write-Host "Creating final package..."
         
-        # Create a clean directory for the package
-        New-Item -ItemType Directory -Path "dist" -Force
+        # Create a clean directory for the final package
+        New-Item -ItemType Directory -Path "package_win" -Force
         
         Write-Host "Copying executables..."
-        Copy-Item "Client\Windows\dist\power_monitor.exe" "dist\" -Force
-        Copy-Item "Client\Windows\dist\AttendanceTracker.exe" "dist\" -Force
+        Copy-Item "Client\Windows\dist\power_monitor.exe" "package_win\" -Force
+        Copy-Item "Client\Windows\dist\AttendanceTracker.exe" "package_win\" -Force
         
         Write-Host "Copying support files..."
-        Copy-Item "Client\Windows\config.json" "dist\" -Force
-        Copy-Item "Client\Windows\test_install.bat" "dist\" -Force
-        Copy-Item "Client\Windows\uninstall.bat" "dist\" -Force
-        Copy-Item "Client\Windows\start.bat" "dist\" -Force
+        Copy-Item "Client\Windows\config.json" "package_win\" -Force
+        Copy-Item "Client\Windows\test_install.bat" "package_win\" -Force
+        Copy-Item "Client\Windows\uninstall.bat" "package_win\" -Force
+        Copy-Item "Client\Windows\start.bat" "package_win\" -Force
+        
+        Write-Host "Package contents before zipping:"
+        Get-ChildItem "package_win" | Format-Table Name, Length
         
         Write-Host "Creating ZIP archive..."
-        Compress-Archive -Path "dist\*" -DestinationPath "AttendanceTracker_Windows.zip" -Force
+        Compress-Archive -Path "package_win\*" -DestinationPath "AttendanceTracker_Windows.zip" -Force
         
-        Write-Host "Package contents:"
-        Get-ChildItem "dist" | Format-Table Name, Length
-        
-        Write-Host "Final ZIP file size:"
+        Write-Host "Final ZIP file details:"
         Get-Item "AttendanceTracker_Windows.zip" | Format-Table Name, Length
 
     - name: Upload artifacts
