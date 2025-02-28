@@ -24,7 +24,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install --use-pep517 requests pywin32 pyinstaller-hooks-contrib
+        pip install --use-pep517 requests pywin32 pyinstaller-hooks-contrib win32ts
 
     - name: Build executables
       shell: pwsh  # Explicitly use PowerShell

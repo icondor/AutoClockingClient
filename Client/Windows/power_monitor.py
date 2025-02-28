@@ -2,13 +2,12 @@ import win32api
 import win32con
 import win32event
 import win32gui
+import win32ts  # Added for WTS notifications
 import winerror
 import os
 import logging
 import subprocess
 import time
-import ctypes
-from ctypes import wintypes
 import sys
 
 class PowerMonitor:
@@ -26,13 +25,11 @@ class PowerMonitor:
             format='%(asctime)s [%(levelname)s] %(message)s'
         )
         
-        # Initialize last event time to prevent duplicate events
         self.last_event_time = 0
-        self.min_event_interval = 5  # minimum seconds between events
+        self.min_event_interval = 5  # seconds between events
         
     def launchApp(self):
         try:
-            # Prevent duplicate launches
             current_time = time.time()
             if current_time - self.last_event_time < self.min_event_interval:
                 logging.info("Skipping launch due to recent event")
@@ -58,14 +55,22 @@ class PowerMonitor:
         self.launchApp()
 
 def WndProc(hWnd, msg, wParam, lParam):
+    monitor = getattr(sys.modules[__name__], 'monitor', None)
+    if not monitor:
+        return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
+    
     if msg == win32con.WM_POWERBROADCAST:
         if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
             monitor.handleEvent("wake")
-        return True
+            return True
     elif msg == win32con.WM_WTSSESSION_CHANGE:
         if wParam == win32con.WTS_SESSION_UNLOCK:
             monitor.handleEvent("unlock")
-        return True
+            return True
+    elif msg == win32con.WM_DESTROY:
+        win32gui.PostQuitMessage(0)
+        return 0
+    
     return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
 
 def create_window():
@@ -74,14 +79,8 @@ def create_window():
     wc.lpszClassName = "PowerMonitorWindow"
     wc.hInstance = win32api.GetModuleHandle(None)
     class_atom = win32gui.RegisterClass(wc)
-    return win32gui.CreateWindow(class_atom,
-        "PowerMonitor",
-        0,
-        0, 0, 0, 0,
-        0,
-        0,
-        wc.hInstance,
-        None)
+    hWnd = win32gui.CreateWindow(class_atom, "PowerMonitor", 0, 0, 0, 0, 0, 0, 0, wc.hInstance, None)
+    return hWnd
 
 def ensure_single_instance():
     mutex = win32event.CreateMutex(None, 1, "Global\\AttendanceTracker")
@@ -89,32 +88,39 @@ def ensure_single_instance():
         return False
     return True
 
+def run_message_loop(hWnd):
+    # Register for session notifications
+    win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
+    
+    # Message loop
+    msg = win32gui.MSG()
+    while win32gui.GetMessage(msg, 0, 0, 0) > 0:
+        win32gui.TranslateMessage(msg)
+        win32gui.DispatchMessage(msg)
+
 if __name__ == '__main__':
     if not ensure_single_instance():
         sys.exit(0)
-        
+    
     try:
-        monitor = PowerMonitor()
+        # Set monitor globally for WndProc
+        sys.modules[__name__].monitor = PowerMonitor()
         logging.info("Starting PowerMonitor...")
         
-        # Register for session notifications
+        # Create window
         hWnd = create_window()
         
-        # Register for power notifications
-        win32gui.WTSRegisterSessionNotification(hWnd, win32con.NOTIFY_FOR_THIS_SESSION)
+        # Trigger initial startup event
+        sys.modules[__name__].monitor.handleEvent("startup")
         
-        # Trigger initial check
-        monitor.handleEvent("startup")
-        
-        # Message loop
-        while True:
-            win32gui.PumpWaitingMessages()
-            time.sleep(0.1)
-            
+        # Run event-driven loop
+        run_message_loop(hWnd)
+    
     except Exception as e:
         logging.error(f"Error in main loop: {str(e)}")
     finally:
         try:
-            win32gui.WTSUnRegisterSessionNotification(hWnd)
+            win32ts.WTSUnRegisterSessionNotification(hWnd)
+            win32gui.DestroyWindow(hWnd)
         except:
-            pass 
+            pass
