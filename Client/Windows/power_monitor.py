@@ -355,6 +355,7 @@ if __name__ == '__main__':
             try:
                 win32gui.DestroyWindow(hWnd)
                 logging.info("Window destroyed successfully")
+                
             except Exception as e:
                 logging.error(f"Failed to destroy window: {e}")
         logging.info("PowerMonitor shutting down")
