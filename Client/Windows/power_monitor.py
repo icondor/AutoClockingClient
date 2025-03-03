@@ -120,7 +120,10 @@ def run_message_loop(hWnd):
         logging.error(f"Error in message loop: {str(e)}")
         sys.exit(1)
     finally:
-        win32ts.WTSUnRegisterSessionNotification(hWnd)
+        try:
+            win32ts.WTSUnRegisterSessionNotification(hWnd)
+        except Exception as e:
+            logging.error(f"Error unregistering session notification: {str(e)}")
 
 if __name__ == '__main__':
     ensure_single_instance()

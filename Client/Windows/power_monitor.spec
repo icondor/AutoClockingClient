@@ -16,9 +16,9 @@ a = Analysis(
         'win32ts',
         'winerror',
         'subprocess',
-        'win32gui',  # Full module
-        'win32con'   # Full module
-    ] + collect_submodules('win32gui') + collect_submodules('win32con'),  # All submodules
+        'win32.lib.win32gui',  # Force full win32gui
+        'win32.lib.win32con'   # Force full win32con
+    ] + collect_submodules('win32gui') + collect_submodules('win32con'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
