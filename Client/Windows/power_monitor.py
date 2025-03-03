@@ -9,23 +9,41 @@ import logging
 import subprocess
 import time
 import sys
+import traceback
 
-# Early logging setup
-log_dir = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker', 'Logs')
-os.makedirs(log_dir, exist_ok=True)
-logging.basicConfig(
-    filename=os.path.join(log_dir, 'power_monitor.log'),
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
+# Early logging setup with more detailed error handling
+try:
+    log_dir = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker', 'Logs')
+    os.makedirs(log_dir, exist_ok=True)
+    logging.basicConfig(
+        filename=os.path.join(log_dir, 'power_monitor.log'),
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s'
+    )
+    logging.info("="*50)
+    logging.info("PowerMonitor Starting")
+    logging.info(f"Current Directory: {os.getcwd()}")
+    logging.info(f"Script Location: {os.path.abspath(__file__)}")
+    logging.info(f"Python Version: {sys.version}")
+except Exception as e:
+    # The fallback writes to current directory which might not be writable
+    with open('power_monitor_startup.log', 'a') as f:
+        f.write(f"Failed to setup logging: {str(e)}\n")
+    raise  # We shouldn't raise here, should fallback to stderr
 
 class PowerMonitor:
     def __init__(self):
-        self.app_support = os.path.join(os.environ['APPDATA'], 'AttendanceTracker')
-        os.makedirs(self.app_support, exist_ok=True)
-        
-        self.last_event_time = 0
-        self.min_event_interval = 5
+        try:
+            self.app_support = os.path.join(os.environ['APPDATA'], 'AttendanceTracker')
+            logging.info(f"Initializing PowerMonitor. App support dir: {self.app_support}")
+            os.makedirs(self.app_support, exist_ok=True)
+            
+            self.last_event_time = 0
+            self.min_event_interval = 5
+            logging.info("PowerMonitor initialized successfully")
+        except Exception as e:
+            logging.error(f"Failed to initialize PowerMonitor: {e}\n{traceback.format_exc()}")
+            raise
         
     def launchApp(self):
         try:
@@ -38,24 +56,56 @@ class PowerMonitor:
             
             app_path = os.path.join(self.app_support, "AttendanceTracker.exe")
             logging.info(f"Attempting to launch AttendanceTracker from: {app_path}")
+            
             if not os.path.exists(app_path):
                 logging.error(f"AttendanceTracker not found at: {app_path}")
+                logging.info("Directory contents:")
+                try:
+                    for item in os.listdir(self.app_support):
+                        logging.info(f"  {item}")
+                except Exception as e:
+                    logging.error(f"Failed to list directory: {e}")
                 return
+            
+            # Ensure log files are created with proper permissions
+            log_path = os.path.join(self.app_support, 'attendance.log')
+            error_path = os.path.join(self.app_support, 'attendance.error')
+            
+            stdout = open(log_path, 'a')
+            stderr = open(error_path, 'a')
             
             process = subprocess.Popen(
                 [app_path],
-                stdout=open(os.path.join(self.app_support, 'attendance.log'), 'a'),
-                stderr=open(os.path.join(self.app_support, 'attendance.error'), 'a'),
+                stdout=stdout,
+                stderr=stderr,
                 cwd=self.app_support,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
             )
             logging.info(f"Launched AttendanceTracker with PID {process.pid}")
+            
+            # Check immediate process status
+            time.sleep(1)
+            if process.poll() is not None:
+                logging.error(f"Process terminated immediately with code: {process.poll()}")
+                # Read any error output
+                stderr.flush()
+                with open(error_path, 'r') as f:
+                    errors = f.read()
+                    if errors:
+                        logging.error(f"Process error output: {errors}")
+            
         except subprocess.SubprocessError as e:
-            logging.error(f"Subprocess error: {str(e)}")
+            logging.error(f"Subprocess error: {str(e)}\n{traceback.format_exc()}")
         except PermissionError as e:
-            logging.error(f"Permission denied: {str(e)}")
+            logging.error(f"Permission denied: {str(e)}\n{traceback.format_exc()}")
         except Exception as e:
-            logging.error(f"Unexpected error: {str(e)}")
+            logging.error(f"Unexpected error: {str(e)}\n{traceback.format_exc()}")
+        finally:
+            try:
+                stdout.close()
+                stderr.close()
+            except:
+                pass
 
     def handleEvent(self, event_type):
         logging.info(f"Handling event: {event_type}")
@@ -96,15 +146,20 @@ def create_window():
     return hWnd
 
 def ensure_single_instance():
-    mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
-    last_error = win32api.GetLastError()
-    if last_error == winerror.ERROR_ALREADY_EXISTS:
-        logging.info("Another instance of PowerMonitor is running—exiting")
+    try:
+        mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
+        last_error = win32api.GetLastError()
+        if last_error == winerror.ERROR_ALREADY_EXISTS:
+            logging.info("Another instance of PowerMonitor is running—exiting")
+            sys.exit(0)  # This should be 0 for expected conditions
+        elif last_error != 0:
+            logging.error(f"Mutex creation failed with error: {last_error}")
+            sys.exit(1)
+        logging.info("Successfully created mutex")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to create/check mutex: {e}\n{traceback.format_exc()}")
         sys.exit(1)
-    elif last_error != 0:
-        logging.error(f"Mutex creation failed with error: {last_error}")
-        sys.exit(1)
-    return True
 
 def run_message_loop(hWnd):
     try:
@@ -126,24 +181,35 @@ def run_message_loop(hWnd):
             logging.error(f"Error unregistering session notification: {str(e)}")
 
 if __name__ == '__main__':
-    ensure_single_instance()
-    
-    hWnd = None
     try:
-        sys.modules[__name__].monitor = PowerMonitor()
-        logging.info("Starting PowerMonitor...")
+        logging.info("PowerMonitor main entry point")
+        ensure_single_instance()
         
+        logging.info("Creating PowerMonitor instance")
+        sys.modules[__name__].monitor = PowerMonitor()
+        logging.info("PowerMonitor instance created successfully")
+        
+        logging.info("Creating window")
         hWnd = create_window()
+        if not hWnd:
+            logging.error("Failed to create window")
+            sys.exit(1)
+        logging.info("Window created successfully")
+        
+        logging.info("Handling startup event")
         sys.modules[__name__].monitor.handleEvent("startup")
         
+        logging.info("Entering message loop")
         run_message_loop(hWnd)
     
     except Exception as e:
-        logging.error(f"Error in main: {str(e)}")
+        logging.error(f"Fatal error in PowerMonitor: {str(e)}\n{traceback.format_exc()}")
         sys.exit(1)
     finally:
-        if hWnd:
+        if 'hWnd' in locals() and hWnd:
             try:
                 win32gui.DestroyWindow(hWnd)
+                logging.info("Window destroyed successfully")
             except Exception as e:
                 logging.error(f"Failed to destroy window: {str(e)}")
+        logging.info("PowerMonitor shutting down")
