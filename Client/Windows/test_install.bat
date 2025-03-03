@@ -55,9 +55,10 @@ cd /d "%APP_SUPPORT%"
 echo Current directory before start: %CD% >> "%LOG_FILE%"
 echo Attempting to start power_monitor.exe... >> "%LOG_FILE%"
 
-:: Try method 1: Direct start with error capture
-echo Method 1: Direct start >> "%LOG_FILE%"
-start "" "%APP_SUPPORT%\power_monitor.exe" 2>> "%LOG_FILE%"
+:: Try method 1: Run with console window to see errors
+echo Method 1: Console window >> "%LOG_FILE%"
+echo Running power_monitor.exe with console window to see errors...
+start "PowerMonitor" /WAIT "%APP_SUPPORT%\power_monitor.exe" > "%LOG_DIR%\output1.log" 2> "%LOG_DIR%\error1.log"
 
 :: Verify installation with proper delay
 timeout /t 3 /nobreak >nul
@@ -66,47 +67,50 @@ if !errorlevel! equ 0 (
     echo ✓ PowerMonitor is running
     echo PowerMonitor started successfully >> "%LOG_FILE%"
 ) else (
-    echo × Failed to start PowerMonitor, trying alternative method...
-    echo Failed to start PowerMonitor, trying method 2... >> "%LOG_FILE%"
+    echo × Failed with method 1, checking error logs...
+    echo --- Method 1 Error Log ---
+    if exist "%LOG_DIR%\error1.log" (
+        type "%LOG_DIR%\error1.log"
+        type "%LOG_DIR%\error1.log" >> "%LOG_FILE%"
+    )
+    if exist "%LOG_DIR%\output1.log" (
+        type "%LOG_DIR%\output1.log"
+        type "%LOG_DIR%\output1.log" >> "%LOG_FILE%"
+    )
     
-    :: Try method 2: CMD call with error capture
-    echo Method 2: CMD call >> "%LOG_FILE%"
-    cmd /c "%APP_SUPPORT%\power_monitor.exe" 2>> "%LOG_FILE%"
+    echo Trying method 2... >> "%LOG_FILE%"
+    :: Try method 2: PowerShell with window
+    echo Method 2: PowerShell with window >> "%LOG_FILE%"
+    powershell -Command "& { Start-Process '%APP_SUPPORT%\power_monitor.exe' -NoNewWindow -Wait -RedirectStandardError '%LOG_DIR%\error2.log' -RedirectStandardOutput '%LOG_DIR%\output2.log' }" >> "%LOG_FILE%" 2>&1
     timeout /t 3 /nobreak >nul
     
     tasklist /FI "IMAGENAME eq power_monitor.exe" | find "power_monitor.exe" >nul
     if !errorlevel! equ 0 (
-        echo ✓ PowerMonitor started successfully with alternative method
+        echo ✓ PowerMonitor started successfully with method 2
         echo PowerMonitor started successfully with method 2 >> "%LOG_FILE%"
     ) else (
-        echo × Failed with method 2, trying final method... >> "%LOG_FILE%"
-        
-        :: Try method 3: PowerShell with error capture
-        echo Method 3: PowerShell >> "%LOG_FILE%"
-        powershell -Command "& { $process = Start-Process -FilePath '%APP_SUPPORT%\power_monitor.exe' -WorkingDirectory '%APP_SUPPORT%' -PassThru -RedirectStandardError '%LOG_DIR%\error.log' -RedirectStandardOutput '%LOG_DIR%\output.log'; Write-Output $process.Id }" >> "%LOG_FILE%" 2>&1
-        timeout /t 3 /nobreak >nul
-        
-        tasklist /FI "IMAGENAME eq power_monitor.exe" | find "power_monitor.exe" >nul
-        if !errorlevel! equ 0 (
-            echo ✓ PowerMonitor started successfully with final method
-            echo PowerMonitor started successfully with method 3 >> "%LOG_FILE%"
-        ) else (
-            echo × Failed to start PowerMonitor with all methods
-            echo Failed to start PowerMonitor with all methods >> "%LOG_FILE%"
-            echo --- Installation Log ---
-            type "%LOG_FILE%"
-            echo --- Error Log ---
-            if exist "%LOG_DIR%\error.log" type "%LOG_DIR%\error.log"
-            echo --- Output Log ---
-            if exist "%LOG_DIR%\output.log" type "%LOG_DIR%\output.log"
-            echo --- Process List ---
-            tasklist >> "%LOG_FILE%"
-            tasklist
-            echo --- Directory Contents ---
-            dir "%APP_SUPPORT%" >> "%LOG_FILE%"
-            dir "%APP_SUPPORT%"
-            exit /b 1
+        echo × Failed with method 2, checking error logs...
+        echo --- Method 2 Error Log ---
+        if exist "%LOG_DIR%\error2.log" (
+            type "%LOG_DIR%\error2.log"
+            type "%LOG_DIR%\error2.log" >> "%LOG_FILE%"
         )
+        if exist "%LOG_DIR%\output2.log" (
+            type "%LOG_DIR%\output2.log"
+            type "%LOG_DIR%\output2.log" >> "%LOG_FILE%"
+        )
+        
+        echo × Failed to start PowerMonitor with all methods
+        echo Failed to start PowerMonitor with all methods >> "%LOG_FILE%"
+        echo --- Full Installation Log ---
+        type "%LOG_FILE%"
+        echo --- Directory Contents ---
+        dir "%APP_SUPPORT%"
+        dir "%APP_SUPPORT%" >> "%LOG_FILE%"
+        echo --- File Permissions ---
+        icacls "%APP_SUPPORT%\power_monitor.exe" >> "%LOG_FILE%"
+        icacls "%APP_SUPPORT%\power_monitor.exe"
+        exit /b 1
     )
 )
 

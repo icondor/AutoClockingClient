@@ -1,20 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
+from PyInstaller.utils.hooks import collect_dynamic_libs
 
 a = Analysis(
     ['power_monitor.py'],
-    pathex=[],
-    binaries=[],
+    pathex=['Client/Windows'],
+    binaries=collect_dynamic_libs('win32ts') + collect_dynamic_libs('win32gui') + collect_dynamic_libs('win32con'),
     datas=[],
     hiddenimports=[
         'win32api',
         'win32con',
         'win32event',
-        'win32service',
-        'win32serviceutil',
-        'win32com.client',
-        'pythoncom'
+        'win32gui',
+        'win32ts',
+        'winerror'
     ],
     hookspath=[],
     hooksconfig={},
@@ -42,10 +42,10 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,  # Hide console—runs silently
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch='x86_64',
     codesign_identity=None,
     entitlements_file=None,
 )

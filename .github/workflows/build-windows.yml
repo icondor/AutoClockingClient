@@ -45,12 +45,12 @@ jobs:
         Write-Host "Creating final package..."
         New-Item -ItemType Directory -Path "package_win" -Force
         Write-Host "Copying files..."
-        Copy-Item "Client/Windows/dist/power_monitor.exe" "package_win/" -Force
-        Copy-Item "Client/Windows/dist/AttendanceTracker.exe" "package_win/" -Force
-        Copy-Item "Client/Windows/config.json" "package_win/" -Force
-        Copy-Item "Client/Windows/test_install.bat" "package_win/" -Force
-        Copy-Item "Client/Windows/uninstall.bat" "package_win/" -Force
-        Copy-Item "Client/Windows/start.bat" "package_win/" -Force
+        Copy-Item "Client/Windows/dist/power_monitor.exe" "package_win/" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/dist/AttendanceTracker.exe" "package_win/" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/config.json" "package_win/" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/test_install.bat" "package_win/" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/uninstall.bat" "package_win/" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/start.bat" "package_win/" -Force -ErrorAction Stop
         Write-Host "Final package contents:"
         Get-ChildItem "package_win" | Format-Table Name, Length
         Write-Host "Zipping package..."

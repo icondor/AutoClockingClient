@@ -15,7 +15,6 @@ class PowerMonitor:
         self.app_support = os.path.join(os.environ['APPDATA'], 'AttendanceTracker')
         os.makedirs(self.app_support, exist_ok=True)
         
-        # Setup logging
         log_dir = os.path.join(self.app_support, 'Logs')
         os.makedirs(log_dir, exist_ok=True)
         
@@ -26,7 +25,7 @@ class PowerMonitor:
         )
         
         self.last_event_time = 0
-        self.min_event_interval = 5  # seconds between events
+        self.min_event_interval = 5
         
     def launchApp(self):
         try:
@@ -43,19 +42,21 @@ class PowerMonitor:
                 logging.error(f"AttendanceTracker not found at: {app_path}")
                 return
             
+            # Use CREATE_NO_WINDOW to suppress console
             process = subprocess.Popen(
                 [app_path],
                 stdout=open(os.path.join(self.app_support, 'attendance.log'), 'a'),
                 stderr=open(os.path.join(self.app_support, 'attendance.error'), 'a'),
-                cwd=self.app_support
+                cwd=self.app_support,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
-            logging.info(f"Launched AttendanceTracker in background with PID {process.pid}")
+            logging.info(f"Launched AttendanceTracker with PID {process.pid}")
         except subprocess.SubprocessError as e:
-            logging.error(f"Subprocess error launching AttendanceTracker: {str(e)}")
+            logging.error(f"Subprocess error: {str(e)}")
         except PermissionError as e:
-            logging.error(f"Permission denied launching AttendanceTracker: {str(e)}")
+            logging.error(f"Permission denied: {str(e)}")
         except Exception as e:
-            logging.error(f"Unexpected error launching AttendanceTracker: {str(e)}")
+            logging.error(f"Unexpected error: {str(e)}")
 
     def handleEvent(self, event_type):
         logging.info(f"Handling event: {event_type}")
@@ -66,17 +67,20 @@ def WndProc(hWnd, msg, wParam, lParam):
     if not monitor:
         return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
     
-    if msg == win32con.WM_POWERBROADCAST:
-        if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
-            monitor.handleEvent("wake")
-            return True
-    elif msg == win32con.WM_WTSSESSION_CHANGE:
-        if wParam == win32con.WTS_SESSION_UNLOCK:
-            monitor.handleEvent("unlock")
-            return True
-    elif msg == win32con.WM_DESTROY:
-        win32gui.PostQuitMessage(0)
-        return 0
+    try:
+        if msg == win32con.WM_POWERBROADCAST:
+            if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
+                monitor.handleEvent("wake")
+                return True
+        elif msg == win32con.WM_WTSSESSION_CHANGE:
+            if wParam == win32con.WTS_SESSION_UNLOCK:
+                monitor.handleEvent("unlock")
+                return True
+        elif msg == win32con.WM_DESTROY:
+            win32gui.PostQuitMessage(0)
+            return 0
+    except AttributeError as e:
+        logging.error(f"AttributeError in WndProc: {str(e)}")
     
     return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
 
@@ -90,18 +94,19 @@ def create_window():
     return hWnd
 
 def ensure_single_instance():
-    mutex = win32event.CreateMutex(None, 1, "Global\\AttendanceTracker")
-    if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
-        logging.info("Another instance of PowerMonitor is already running")
-        return False
+    mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
+    last_error = win32api.GetLastError()
+    if last_error == winerror.ERROR_ALREADY_EXISTS:
+        logging.info("Another instance of PowerMonitor is running—exiting")
+        sys.exit(1)  # Force exit with non-zero code
+    elif last_error != 0:
+        logging.error(f"Mutex creation failed with error: {last_error}")
+        sys.exit(1)
     return True
 
 def run_message_loop(hWnd):
     try:
-        # Register for session notifications
         win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
-        
-        # Message loop
         msg = win32gui.MSG()
         while win32gui.GetMessage(msg, 0, 0, 0) > 0:
             win32gui.TranslateMessage(msg)
@@ -110,8 +115,7 @@ def run_message_loop(hWnd):
         win32ts.WTSUnRegisterSessionNotification(hWnd)
 
 if __name__ == '__main__':
-    if not ensure_single_instance():
-        sys.exit(0)
+    ensure_single_instance()  # No need for if—exits itself if duplicate
     
     hWnd = None
     try:
@@ -124,7 +128,7 @@ if __name__ == '__main__':
         run_message_loop(hWnd)
     
     except Exception as e:
-        logging.error(f"Error in main loop: {str(e)}")
+        logging.error(f"Error in main: {str(e)}")
     finally:
         if hWnd:
             try:
