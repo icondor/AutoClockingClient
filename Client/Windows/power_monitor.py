@@ -33,11 +33,10 @@ required_modules = {
     'win32con': None,
     'win32event': None,
     'win32gui': None,
-    'win32ts': None,
-    'winerror': None,
-    'win32process': None  # Added for process enumeration
+    'win32process': None
 }
 
+# First, import the core modules we absolutely need
 for module_name in required_modules:
     try:
         module = __import__(module_name)
@@ -47,19 +46,26 @@ for module_name in required_modules:
         logging.error(f"Failed to import {module_name}: {e}")
         sys.exit(1)
 
-# Now we can safely use the imported modules
+# Now we can safely use these modules
 win32api = required_modules['win32api']
 win32con = required_modules['win32con']
 win32event = required_modules['win32event']
 win32gui = required_modules['win32gui']
-win32ts = required_modules['win32ts']
-winerror = required_modules['winerror']
 win32process = required_modules['win32process']
+winerror = __import__('winerror')
+
+# Try to import optional modules
+try:
+    import win32ts
+    HAS_WIN32TS = True
+    logging.info("Successfully imported win32ts")
+except ImportError:
+    HAS_WIN32TS = False
+    logging.warning("win32ts module not available - session unlock detection disabled")
 
 def is_process_running(process_name):
     """Check if a process is already running."""
     try:
-        # Use tasklist to find process
         result = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {process_name}'], 
                               capture_output=True, text=True)
         return process_name.lower() in result.stdout.lower()
@@ -179,10 +185,12 @@ def WndProc(hWnd, msg, wParam, lParam):
             if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
                 if monitor.handleEvent("wake"):
                     return True
-        elif msg == win32con.WM_WTSSESSION_CHANGE:
-            if wParam == win32con.WTS_SESSION_UNLOCK:
-                if monitor.handleEvent("unlock"):
-                    return True
+        # Only handle session change if win32ts is available
+        elif HAS_WIN32TS and hasattr(win32con, 'WM_WTSSESSION_CHANGE'):
+            if msg == win32con.WM_WTSSESSION_CHANGE:
+                if wParam == win32con.WTS_SESSION_UNLOCK:
+                    if monitor.handleEvent("unlock"):
+                        return True
         elif msg == win32con.WM_DESTROY:
             win32gui.PostQuitMessage(0)
             return 0
@@ -195,14 +203,25 @@ def verify_win32_features():
     """Verify that all required Windows API features are available."""
     required_features = {
         'win32gui.MSG': hasattr(win32gui, 'MSG'),
-        'win32con.WM_WTSSESSION_CHANGE': hasattr(win32con, 'WM_WTSSESSION_CHANGE'),
-        'win32ts.WTSRegisterSessionNotification': hasattr(win32ts, 'WTSRegisterSessionNotification'),
+        'win32con.WM_POWERBROADCAST': hasattr(win32con, 'WM_POWERBROADCAST'),
+        'win32con.PBT_APMRESUMEAUTOMATIC': hasattr(win32con, 'PBT_APMRESUMEAUTOMATIC')
     }
+    
+    # Session notification features are optional
+    if HAS_WIN32TS:
+        required_features.update({
+            'win32con.WM_WTSSESSION_CHANGE': hasattr(win32con, 'WM_WTSSESSION_CHANGE'),
+            'win32con.WTS_SESSION_UNLOCK': hasattr(win32con, 'WTS_SESSION_UNLOCK')
+        })
     
     missing_features = [name for name, available in required_features.items() if not available]
     if missing_features:
         logging.error(f"Missing required Windows API features: {', '.join(missing_features)}")
         return False
+        
+    logging.info("All required Windows API features are available")
+    if not HAS_WIN32TS:
+        logging.warning("Session unlock detection will be disabled")
     return True
 
 def create_window():
@@ -265,16 +284,18 @@ def run_message_loop(hWnd):
             logging.error("Required Windows API features not available")
             return False
             
-        # Register for session notifications
-        try:
-            result = win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
-            if not result:
-                logging.error("Failed to register for session notifications")
-                return False
-            logging.info("Successfully registered for session notifications")
-        except Exception as e:
-            logging.error(f"Failed to register for session notifications: {e}")
-            return False
+        # Register for session notifications only if available
+        session_notifications_registered = False
+        if HAS_WIN32TS:
+            try:
+                result = win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
+                if result:
+                    session_notifications_registered = True
+                    logging.info("Successfully registered for session notifications")
+                else:
+                    logging.warning("Failed to register for session notifications - continuing without")
+            except Exception as e:
+                logging.warning(f"Could not register for session notifications: {e}")
         
         # Message loop
         msg = win32gui.MSG()
@@ -288,10 +309,11 @@ def run_message_loop(hWnd):
         logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
         return False
     finally:
-        try:
-            win32ts.WTSUnRegisterSessionNotification(hWnd)
-        except Exception as e:
-            logging.error(f"Error unregistering session notification: {e}")
+        if session_notifications_registered:
+            try:
+                win32ts.WTSUnRegisterSessionNotification(hWnd)
+            except Exception as e:
+                logging.warning(f"Error unregistering session notification: {e}")
 
 if __name__ == '__main__':
     try:
