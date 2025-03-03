@@ -110,12 +110,24 @@ class PowerMonitor:
             stdout = open(log_path, 'a')
             stderr = open(error_path, 'a')
             
+            # Use all available flags to hide the window
+            creation_flags = (
+                subprocess.CREATE_NO_WINDOW |      # Don't create a console window
+                subprocess.DETACHED_PROCESS |      # Detach from parent process
+                subprocess.SW_HIDE                 # Hide any window that might appear
+            )
+            
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE  # Hide the window
+            
             process = subprocess.Popen(
                 [app_path],
                 stdout=stdout,
                 stderr=stderr,
                 cwd=self.app_support,
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+                creationflags=creation_flags,
+                startupinfo=startupinfo
             )
             logging.info(f"Launched AttendanceTracker with PID {process.pid}")
             
@@ -130,6 +142,12 @@ class PowerMonitor:
                     if errors:
                         logging.error(f"Process error output: {errors}")
                 return False
+                
+            # Double-check the process is running
+            if not is_process_running("AttendanceTracker.exe"):
+                logging.error("Process not found after starting")
+                return False
+                
             return True
             
         except Exception as e:
