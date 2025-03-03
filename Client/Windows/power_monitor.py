@@ -10,7 +10,7 @@ import subprocess
 import time
 import sys
 
-# Early logging setup to catch import errors
+# Early logging setup
 log_dir = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 logging.basicConfig(
@@ -67,6 +67,9 @@ def WndProc(hWnd, msg, wParam, lParam):
         return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
     
     try:
+        if not hasattr(win32con, 'WM_WTSSESSION_CHANGE'):
+            logging.error("WM_WTSSESSION_CHANGE not available in win32con")
+            return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
         if msg == win32con.WM_POWERBROADCAST:
             if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
                 monitor.handleEvent("wake")
@@ -105,21 +108,25 @@ def ensure_single_instance():
 
 def run_message_loop(hWnd):
     try:
+        if not hasattr(win32gui, 'MSG'):
+            logging.error("MSG class not available in win32gui—cannot run message loop")
+            sys.exit(1)
         win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
-        msg = win32gui.MSG()  # Revert to direct use
+        msg = win32gui.MSG()
         while win32gui.GetMessage(msg, 0, 0, 0) > 0:
             win32gui.TranslateMessage(msg)
             win32gui.DispatchMessage(msg)
     except Exception as e:
         logging.error(f"Error in message loop: {str(e)}")
+        sys.exit(1)
     finally:
         win32ts.WTSUnRegisterSessionNotification(hWnd)
 
 if __name__ == '__main__':
+    ensure_single_instance()
+    
+    hWnd = None
     try:
-        ensure_single_instance()
-        
-        hWnd = None
         sys.modules[__name__].monitor = PowerMonitor()
         logging.info("Starting PowerMonitor...")
         
