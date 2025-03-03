@@ -1,17 +1,11 @@
-import win32api
-import win32con
-import win32event
-import win32gui
-import win32ts
-import winerror
 import os
+import sys
 import logging
 import subprocess
 import time
-import sys
 import traceback
 
-# Early logging setup with more detailed error handling
+# Early logging setup with proper fallback
 try:
     log_dir = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker', 'Logs')
     os.makedirs(log_dir, exist_ok=True)
@@ -20,16 +14,58 @@ try:
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s'
     )
-    logging.info("="*50)
-    logging.info("PowerMonitor Starting")
-    logging.info(f"Current Directory: {os.getcwd()}")
-    logging.info(f"Script Location: {os.path.abspath(__file__)}")
-    logging.info(f"Python Version: {sys.version}")
 except Exception as e:
-    # The fallback writes to current directory which might not be writable
-    with open('power_monitor_startup.log', 'a') as f:
-        f.write(f"Failed to setup logging: {str(e)}\n")
-    raise  # We shouldn't raise here, should fallback to stderr
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s'
+    )
+    logging.error(f"Failed to setup file logging: {e}. Falling back to stderr.")
+
+logging.info("="*50)
+logging.info("PowerMonitor Starting")
+logging.info(f"Current Directory: {os.getcwd()}")
+logging.info(f"Script Location: {os.path.abspath(__file__)}")
+logging.info(f"Python Version: {sys.version}")
+
+# Import Windows modules with proper error handling
+required_modules = {
+    'win32api': None,
+    'win32con': None,
+    'win32event': None,
+    'win32gui': None,
+    'win32ts': None,
+    'winerror': None,
+    'win32process': None  # Added for process enumeration
+}
+
+for module_name in required_modules:
+    try:
+        module = __import__(module_name)
+        required_modules[module_name] = module
+        logging.info(f"Successfully imported {module_name}")
+    except ImportError as e:
+        logging.error(f"Failed to import {module_name}: {e}")
+        sys.exit(1)
+
+# Now we can safely use the imported modules
+win32api = required_modules['win32api']
+win32con = required_modules['win32con']
+win32event = required_modules['win32event']
+win32gui = required_modules['win32gui']
+win32ts = required_modules['win32ts']
+winerror = required_modules['winerror']
+win32process = required_modules['win32process']
+
+def is_process_running(process_name):
+    """Check if a process is already running."""
+    try:
+        # Use tasklist to find process
+        result = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {process_name}'], 
+                              capture_output=True, text=True)
+        return process_name.lower() in result.stdout.lower()
+    except Exception as e:
+        logging.error(f"Error checking process status: {e}")
+        return False
 
 class PowerMonitor:
     def __init__(self):
@@ -46,11 +82,17 @@ class PowerMonitor:
             raise
         
     def launchApp(self):
+        stdout = stderr = None
         try:
             current_time = time.time()
             if current_time - self.last_event_time < self.min_event_interval:
                 logging.info("Skipping launch due to recent event")
-                return
+                return True
+
+            # Check if AttendanceTracker is already running
+            if is_process_running("AttendanceTracker.exe"):
+                logging.info("AttendanceTracker is already running")
+                return True
             
             self.last_event_time = current_time
             
@@ -59,13 +101,7 @@ class PowerMonitor:
             
             if not os.path.exists(app_path):
                 logging.error(f"AttendanceTracker not found at: {app_path}")
-                logging.info("Directory contents:")
-                try:
-                    for item in os.listdir(self.app_support):
-                        logging.info(f"  {item}")
-                except Exception as e:
-                    logging.error(f"Failed to list directory: {e}")
-                return
+                return False
             
             # Ensure log files are created with proper permissions
             log_path = os.path.join(self.app_support, 'attendance.log')
@@ -83,33 +119,37 @@ class PowerMonitor:
             )
             logging.info(f"Launched AttendanceTracker with PID {process.pid}")
             
-            # Check immediate process status
+            # Verify process started successfully
             time.sleep(1)
             if process.poll() is not None:
-                logging.error(f"Process terminated immediately with code: {process.poll()}")
-                # Read any error output
+                exit_code = process.poll()
+                logging.error(f"Process terminated immediately with code: {exit_code}")
                 stderr.flush()
                 with open(error_path, 'r') as f:
                     errors = f.read()
                     if errors:
                         logging.error(f"Process error output: {errors}")
+                return False
+            return True
             
-        except subprocess.SubprocessError as e:
-            logging.error(f"Subprocess error: {str(e)}\n{traceback.format_exc()}")
-        except PermissionError as e:
-            logging.error(f"Permission denied: {str(e)}\n{traceback.format_exc()}")
         except Exception as e:
-            logging.error(f"Unexpected error: {str(e)}\n{traceback.format_exc()}")
+            logging.error(f"Error launching app: {e}\n{traceback.format_exc()}")
+            return False
         finally:
-            try:
-                stdout.close()
-                stderr.close()
-            except:
-                pass
+            if stdout:
+                try:
+                    stdout.close()
+                except:
+                    pass
+            if stderr:
+                try:
+                    stderr.close()
+                except:
+                    pass
 
     def handleEvent(self, event_type):
         logging.info(f"Handling event: {event_type}")
-        self.launchApp()
+        return self.launchApp()
 
 def WndProc(hWnd, msg, wParam, lParam):
     monitor = getattr(sys.modules[__name__], 'monitor', None)
@@ -117,41 +157,80 @@ def WndProc(hWnd, msg, wParam, lParam):
         return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
     
     try:
-        if not hasattr(win32con, 'WM_WTSSESSION_CHANGE'):
-            logging.error("WM_WTSSESSION_CHANGE not available in win32con")
-            return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
         if msg == win32con.WM_POWERBROADCAST:
             if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
-                monitor.handleEvent("wake")
-                return True
+                if monitor.handleEvent("wake"):
+                    return True
         elif msg == win32con.WM_WTSSESSION_CHANGE:
             if wParam == win32con.WTS_SESSION_UNLOCK:
-                monitor.handleEvent("unlock")
-                return True
+                if monitor.handleEvent("unlock"):
+                    return True
         elif msg == win32con.WM_DESTROY:
             win32gui.PostQuitMessage(0)
             return 0
-    except AttributeError as e:
-        logging.error(f"AttributeError in WndProc: {str(e)}")
+    except Exception as e:
+        logging.error(f"Error in WndProc: {e}\n{traceback.format_exc()}")
     
     return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
 
+def verify_win32_features():
+    """Verify that all required Windows API features are available."""
+    required_features = {
+        'win32gui.MSG': hasattr(win32gui, 'MSG'),
+        'win32con.WM_WTSSESSION_CHANGE': hasattr(win32con, 'WM_WTSSESSION_CHANGE'),
+        'win32ts.WTSRegisterSessionNotification': hasattr(win32ts, 'WTSRegisterSessionNotification'),
+    }
+    
+    missing_features = [name for name, available in required_features.items() if not available]
+    if missing_features:
+        logging.error(f"Missing required Windows API features: {', '.join(missing_features)}")
+        return False
+    return True
+
 def create_window():
-    wc = win32gui.WNDCLASS()
-    wc.lpfnWndProc = WndProc
-    wc.lpszClassName = "PowerMonitorWindow"
-    wc.hInstance = win32api.GetModuleHandle(None)
-    class_atom = win32gui.RegisterClass(wc)
-    hWnd = win32gui.CreateWindow(class_atom, "PowerMonitor", 0, 0, 0, 0, 0, 0, 0, wc.hInstance, None)
-    return hWnd
+    try:
+        # Initialize window class
+        wc = win32gui.WNDCLASS()
+        wc.lpfnWndProc = WndProc
+        wc.lpszClassName = "PowerMonitorWindow"
+        wc.hInstance = win32api.GetModuleHandle(None)
+        
+        # Register class
+        try:
+            class_atom = win32gui.RegisterClass(wc)
+        except Exception as e:
+            logging.error(f"Failed to register window class: {e}")
+            return None
+            
+        # Create window
+        try:
+            hWnd = win32gui.CreateWindow(
+                class_atom,
+                "PowerMonitor",
+                0, 0, 0, 0, 0,  # Style, X, Y, W, H
+                0, 0,  # Parent, Menu
+                wc.hInstance,
+                None
+            )
+            if not hWnd:
+                logging.error("CreateWindow returned NULL")
+                return None
+            return hWnd
+        except Exception as e:
+            logging.error(f"Failed to create window: {e}")
+            return None
+            
+    except Exception as e:
+        logging.error(f"Error in create_window: {e}\n{traceback.format_exc()}")
+        return None
 
 def ensure_single_instance():
     try:
         mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
         last_error = win32api.GetLastError()
         if last_error == winerror.ERROR_ALREADY_EXISTS:
-            logging.info("Another instance of PowerMonitor is running—exiting")
-            sys.exit(0)  # This should be 0 for expected conditions
+            logging.info("Another instance of PowerMonitor is running—exiting normally")
+            sys.exit(0)
         elif last_error != 0:
             logging.error(f"Mutex creation failed with error: {last_error}")
             sys.exit(1)
@@ -163,27 +242,49 @@ def ensure_single_instance():
 
 def run_message_loop(hWnd):
     try:
-        if not hasattr(win32gui, 'MSG'):
-            logging.error("MSG class not available in win32gui—cannot run message loop")
-            sys.exit(1)
-        win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
+        # Verify Windows API features before starting
+        if not verify_win32_features():
+            logging.error("Required Windows API features not available")
+            return False
+            
+        # Register for session notifications
+        try:
+            result = win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
+            if not result:
+                logging.error("Failed to register for session notifications")
+                return False
+            logging.info("Successfully registered for session notifications")
+        except Exception as e:
+            logging.error(f"Failed to register for session notifications: {e}")
+            return False
+        
+        # Message loop
         msg = win32gui.MSG()
         while win32gui.GetMessage(msg, 0, 0, 0) > 0:
             win32gui.TranslateMessage(msg)
             win32gui.DispatchMessage(msg)
+        
+        return True
+        
     except Exception as e:
-        logging.error(f"Error in message loop: {str(e)}")
-        sys.exit(1)
+        logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
+        return False
     finally:
         try:
             win32ts.WTSUnRegisterSessionNotification(hWnd)
         except Exception as e:
-            logging.error(f"Error unregistering session notification: {str(e)}")
+            logging.error(f"Error unregistering session notification: {e}")
 
 if __name__ == '__main__':
     try:
         logging.info("PowerMonitor main entry point")
         ensure_single_instance()
+        
+        # Kill any existing AttendanceTracker instances
+        if is_process_running("AttendanceTracker.exe"):
+            subprocess.run(['taskkill', '/F', '/IM', 'AttendanceTracker.exe'], 
+                         capture_output=True)
+            time.sleep(1)
         
         logging.info("Creating PowerMonitor instance")
         sys.modules[__name__].monitor = PowerMonitor()
@@ -197,13 +298,17 @@ if __name__ == '__main__':
         logging.info("Window created successfully")
         
         logging.info("Handling startup event")
-        sys.modules[__name__].monitor.handleEvent("startup")
+        if not sys.modules[__name__].monitor.handleEvent("startup"):
+            logging.error("Failed to handle startup event")
+            sys.exit(1)
         
         logging.info("Entering message loop")
-        run_message_loop(hWnd)
-    
+        if not run_message_loop(hWnd):
+            logging.error("Message loop failed")
+            sys.exit(1)
+            
     except Exception as e:
-        logging.error(f"Fatal error in PowerMonitor: {str(e)}\n{traceback.format_exc()}")
+        logging.error(f"Fatal error in PowerMonitor: {e}\n{traceback.format_exc()}")
         sys.exit(1)
     finally:
         if 'hWnd' in locals() and hWnd:
@@ -211,5 +316,5 @@ if __name__ == '__main__':
                 win32gui.DestroyWindow(hWnd)
                 logging.info("Window destroyed successfully")
             except Exception as e:
-                logging.error(f"Failed to destroy window: {str(e)}")
+                logging.error(f"Failed to destroy window: {e}")
         logging.info("PowerMonitor shutting down")
