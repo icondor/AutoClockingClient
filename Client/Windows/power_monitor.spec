@@ -16,8 +16,9 @@ a = Analysis(
         'win32ts',
         'winerror',
         'subprocess',
-        'win32gui.MSG'  # Explicitly include MSG class
-    ] + collect_submodules('win32con'),  # Include all win32con constants
+        'win32gui',  # Ensure full module
+        'win32con'   # Ensure full module
+    ] + collect_submodules('win32gui') + collect_submodules('win32con'),  # Full submodules
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

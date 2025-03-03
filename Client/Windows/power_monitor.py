@@ -9,21 +9,20 @@ import logging
 import subprocess
 import time
 import sys
-from win32gui import MSG  # Explicitly import MSG class
+
+# Early logging setup to catch import errors
+log_dir = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker', 'Logs')
+os.makedirs(log_dir, exist_ok=True)
+logging.basicConfig(
+    filename=os.path.join(log_dir, 'power_monitor.log'),
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
 
 class PowerMonitor:
     def __init__(self):
         self.app_support = os.path.join(os.environ['APPDATA'], 'AttendanceTracker')
         os.makedirs(self.app_support, exist_ok=True)
-        
-        log_dir = os.path.join(self.app_support, 'Logs')
-        os.makedirs(log_dir, exist_ok=True)
-        
-        logging.basicConfig(
-            filename=os.path.join(log_dir, 'power_monitor.log'),
-            level=logging.INFO,
-            format='%(asctime)s [%(levelname)s] %(message)s'
-        )
         
         self.last_event_time = 0
         self.min_event_interval = 5
@@ -107,18 +106,20 @@ def ensure_single_instance():
 def run_message_loop(hWnd):
     try:
         win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
-        msg = MSG()
+        msg = win32gui.MSG()  # Revert to direct use
         while win32gui.GetMessage(msg, 0, 0, 0) > 0:
             win32gui.TranslateMessage(msg)
             win32gui.DispatchMessage(msg)
+    except Exception as e:
+        logging.error(f"Error in message loop: {str(e)}")
     finally:
         win32ts.WTSUnRegisterSessionNotification(hWnd)
 
 if __name__ == '__main__':
-    ensure_single_instance()
-    
-    hWnd = None
     try:
+        ensure_single_instance()
+        
+        hWnd = None
         sys.modules[__name__].monitor = PowerMonitor()
         logging.info("Starting PowerMonitor...")
         
@@ -129,6 +130,7 @@ if __name__ == '__main__':
     
     except Exception as e:
         logging.error(f"Error in main: {str(e)}")
+        sys.exit(1)
     finally:
         if hWnd:
             try:
