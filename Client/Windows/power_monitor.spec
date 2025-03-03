@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
-from PyInstaller.utils.hooks import collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
 a = Analysis(
     ['power_monitor.py'],
@@ -14,8 +14,10 @@ a = Analysis(
         'win32event',
         'win32gui',
         'win32ts',
-        'winerror'
-    ],
+        'winerror',
+        'subprocess',
+        'win32gui.MSG'  # Explicitly include MSG class
+    ] + collect_submodules('win32con'),  # Include all win32con constants
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -42,7 +44,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # Hide console—runs silently
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch='x86_64',

@@ -9,6 +9,7 @@ import logging
 import subprocess
 import time
 import sys
+from win32gui import MSG  # Explicitly import MSG class
 
 class PowerMonitor:
     def __init__(self):
@@ -42,7 +43,6 @@ class PowerMonitor:
                 logging.error(f"AttendanceTracker not found at: {app_path}")
                 return
             
-            # Use CREATE_NO_WINDOW to suppress console
             process = subprocess.Popen(
                 [app_path],
                 stdout=open(os.path.join(self.app_support, 'attendance.log'), 'a'),
@@ -98,7 +98,7 @@ def ensure_single_instance():
     last_error = win32api.GetLastError()
     if last_error == winerror.ERROR_ALREADY_EXISTS:
         logging.info("Another instance of PowerMonitor is running—exiting")
-        sys.exit(1)  # Force exit with non-zero code
+        sys.exit(1)
     elif last_error != 0:
         logging.error(f"Mutex creation failed with error: {last_error}")
         sys.exit(1)
@@ -107,7 +107,7 @@ def ensure_single_instance():
 def run_message_loop(hWnd):
     try:
         win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
-        msg = win32gui.MSG()
+        msg = MSG()
         while win32gui.GetMessage(msg, 0, 0, 0) > 0:
             win32gui.TranslateMessage(msg)
             win32gui.DispatchMessage(msg)
@@ -115,7 +115,7 @@ def run_message_loop(hWnd):
         win32ts.WTSUnRegisterSessionNotification(hWnd)
 
 if __name__ == '__main__':
-    ensure_single_instance()  # No need for if—exits itself if duplicate
+    ensure_single_instance()
     
     hWnd = None
     try:
