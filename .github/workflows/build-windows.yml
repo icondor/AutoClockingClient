@@ -9,16 +9,20 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
         architecture: 'x64'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller requests pywin32 pyinstaller-hooks-contrib
+
     - name: Build executables
       shell: pwsh
       working-directory: Client/Windows
@@ -39,24 +43,28 @@ jobs:
         }
         Write-Host "Contents of dist directory:"
         Get-ChildItem "dist" | Format-Table Name, Length
+
     - name: Create distribution package
       shell: pwsh
       run: |
-        Write-Host "Creating final package..."
-        New-Item -ItemType Directory -Path "package_win" -Force
-        Write-Host "Copying files..."
-        Copy-Item "Client/Windows/dist/power_monitor.exe" "package_win/" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/dist/AttendanceTracker.exe" "package_win/" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/config.json" "package_win/" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/test_install.bat" "package_win/" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/uninstall.bat" "package_win/" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/start.bat" "package_win/" -Force -ErrorAction Stop
-        Write-Host "Final package contents:"
-        Get-ChildItem "package_win" | Format-Table Name, Length
-        Write-Host "Zipping package..."
-        Compress-Archive -Path "package_win/*" -DestinationPath "AttendanceTracker_Windows_x64.zip" -Force
+        Write-Host "Copying files to root for flat zip..."
+        Copy-Item "Client/Windows/dist/power_monitor.exe" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/dist/AttendanceTracker.exe" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/config.json" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/test_install.bat" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/uninstall.bat" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/start.bat" "./" -Force -ErrorAction Stop
+        Write-Host "Package contents:"
+        Get-ChildItem | Where-Object { $_.Name -in "power_monitor.exe", "AttendanceTracker.exe", "config.json", "test_install.bat", "uninstall.bat", "start.bat" } | Format-Table Name, Length
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: AttendanceTracker-Windows-x64
-        path: AttendanceTracker_Windows_x64.zip
+        path: |
+          power_monitor.exe
+          AttendanceTracker.exe
+          config.json
+          test_install.bat
+          uninstall.bat
+          start.bat
