@@ -196,9 +196,9 @@ class PowerMonitor:
 def verify_win32_features():
     """Verify that all required Windows API features are available."""
     try:
-        # Basic message loop features - don't check for MSG class
-        if not hasattr(win32gui, 'GetMessage'):
-            logging.error("win32gui.GetMessage not available")
+        # Check for basic window message functions
+        if not hasattr(win32gui, 'PeekMessage'):
+            logging.error("win32gui.PeekMessage not available")
             return False
         if not hasattr(win32gui, 'TranslateMessage'):
             logging.error("win32gui.TranslateMessage not available")
@@ -207,7 +207,10 @@ def verify_win32_features():
             logging.error("win32gui.DispatchMessage not available")
             return False
             
-        # Power broadcast features
+        # Check for window constants
+        if not hasattr(win32con, 'WM_QUIT'):
+            logging.error("win32con.WM_QUIT not available")
+            return False
         if not hasattr(win32con, 'WM_POWERBROADCAST'):
             logging.error("win32con.WM_POWERBROADCAST not available")
             return False
@@ -226,15 +229,22 @@ def run_message_loop(hWnd):
     session_notifications_registered = False
     
     try:
-        # Create a simple message structure that doesn't rely on win32gui.MSG
-        class SimpleMessage:
-            def __init__(self):
-                self.hWnd = None
-                self.message = 0
-                self.wParam = 0
-                self.lParam = 0
-                
-        msg = SimpleMessage()
+        # Create a message structure using ctypes
+        import ctypes
+        from ctypes.wintypes import HWND, UINT, WPARAM, LPARAM, BOOL
+        
+        class MSG(ctypes.Structure):
+            _fields_ = [
+                ("hWnd", HWND),
+                ("message", UINT),
+                ("wParam", WPARAM),
+                ("lParam", LPARAM),
+                ("time", ctypes.c_ulong),
+                ("pt_x", ctypes.c_long),
+                ("pt_y", ctypes.c_long),
+            ]
+            
+        msg = MSG()
         
         # Try to register for session notifications if available
         if HAS_WIN32TS:
@@ -247,25 +257,28 @@ def run_message_loop(hWnd):
         else:
             logging.info("Session notifications not available (win32ts not imported)")
             
-        # Main message loop
+        # Main message loop using PeekMessage
         while True:
             try:
-                # GetMessage returns (msg, result)
-                result = win32gui.GetMessage(None, 0, 0, 0)
-                
-                if result == 0:  # WM_QUIT
-                    logging.info("Received WM_QUIT, exiting message loop")
-                    break
-                elif result == -1:
-                    logging.error("Error in GetMessage")
-                    break
+                if win32gui.PeekMessage(msg, 0, 0, 0, win32con.PM_REMOVE):
+                    if msg.message == win32con.WM_QUIT:
+                        logging.info("Received WM_QUIT, exiting message loop")
+                        break
+                        
+                    try:
+                        win32gui.TranslateMessage(msg)
+                        win32gui.DispatchMessage(msg)
+                    except Exception as e:
+                        logging.error(f"Error processing message: {e}")
+                        continue
+                else:
+                    # No messages, sleep a bit to prevent CPU hogging
+                    time.sleep(0.1)
                     
-                win32gui.TranslateMessage(None)
-                win32gui.DispatchMessage(None)
-                
             except Exception as e:
                 logging.error(f"Error in message loop iteration: {e}")
-                break
+                # Don't break, try to continue processing messages
+                time.sleep(0.1)
                 
         return True
         
