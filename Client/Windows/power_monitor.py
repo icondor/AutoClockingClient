@@ -8,6 +8,7 @@ import win32gui
 import win32api
 import win32con
 import win32event
+import winerror
 
 # Try to import win32ts, but don't fail if not available
 try:
@@ -366,7 +367,7 @@ def ensure_single_instance():
     try:
         mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
         last_error = win32api.GetLastError()
-        if last_error == win32con.ERROR_ALREADY_EXISTS:
+        if last_error == 183:  # ERROR_ALREADY_EXISTS = 183
             logging.info("Another instance of PowerMonitor is running—exiting normally")
             sys.exit(0)
         elif last_error != 0:
