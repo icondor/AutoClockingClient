@@ -264,23 +264,6 @@ def run_message_loop(hWnd):
     session_notifications_registered = False
     
     try:
-        # Create a message structure using ctypes
-        import ctypes
-        from ctypes.wintypes import HWND, UINT, WPARAM, LPARAM, BOOL
-        
-        class MSG(ctypes.Structure):
-            _fields_ = [
-                ("hWnd", HWND),
-                ("message", UINT),
-                ("wParam", WPARAM),
-                ("lParam", LPARAM),
-                ("time", ctypes.c_ulong),
-                ("pt_x", ctypes.c_long),
-                ("pt_y", ctypes.c_long),
-            ]
-            
-        msg = MSG()
-        
         # Try to register for session notifications if available
         if HAS_WIN32TS:
             try:
@@ -292,28 +275,29 @@ def run_message_loop(hWnd):
         else:
             logging.info("Session notifications not available (win32ts not imported)")
             
-        # Main message loop using PeekMessage
+        # Message loop that properly waits for Windows messages
+        msg = win32gui.MSG()
         while True:
+            # GetMessage will block until a message is received
+            # Returns:
+            # - 0 if WM_QUIT is received
+            # - -1 on error
+            # - 1 if a message was retrieved
+            result = win32gui.GetMessage(msg, hWnd, 0, 0)
+            
+            if result == 0:  # WM_QUIT received
+                logging.info("Received WM_QUIT, exiting message loop")
+                break
+            elif result == -1:
+                logging.error("Error in GetMessage")
+                break
+                
             try:
-                if win32gui.PeekMessage(msg, 0, 0, 0, win32con.PM_REMOVE):
-                    if msg.message == win32con.WM_QUIT:
-                        logging.info("Received WM_QUIT, exiting message loop")
-                        break
-                        
-                    try:
-                        win32gui.TranslateMessage(msg)
-                        win32gui.DispatchMessage(msg)
-                    except Exception as e:
-                        logging.error(f"Error processing message: {e}")
-                        continue
-                else:
-                    # No messages, sleep a bit to prevent CPU hogging
-                    time.sleep(0.1)
-                    
+                win32gui.TranslateMessage(msg)
+                win32gui.DispatchMessage(msg)
             except Exception as e:
-                logging.error(f"Error in message loop iteration: {e}")
-                # Don't break, try to continue processing messages
-                time.sleep(0.1)
+                logging.error(f"Error dispatching message: {e}")
+                continue
                 
         return True
         
