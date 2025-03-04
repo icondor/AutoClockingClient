@@ -1,63 +1,63 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-block_cipher = None
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules, collect_data_files
-
 a = Analysis(
     ['power_monitor.py'],
-    pathex=['Client/Windows'],
-    binaries=(
-        collect_dynamic_libs('win32ts') +
-        collect_dynamic_libs('win32gui') +
-        collect_dynamic_libs('win32con') +
-        collect_dynamic_libs('win32api') +
-        collect_dynamic_libs('win32event')
-    ),
-    datas=collect_data_files('win32gui'),
+    pathex=[],
+    binaries=[],
+    datas=[('config.json', '.')],
     hiddenimports=[
         'win32api',
         'win32con',
         'win32event',
-        'win32gui',
-        'win32ts',
+        'win32service',
+        'win32serviceutil',
         'win32com.client',
+        'win32gui',
         'win32gui_struct',
+        'win32ts',
         'win32ts.constants',
         'win32con.constants',
         'win32.win32gui',
         'win32.win32ts',
         'win32.win32con',
-        'win32gui.PyCWnd',
-        'win32gui.PyCDialog',
-        'win32con.WM_POWERBROADCAST',
-        'win32con.PBT_APMRESUMEAUTOMATIC',
-        'win32con.WM_WTSSESSION_CHANGE',
-        'win32con.WTS_SESSION_UNLOCK',
-        'win32con.WM_DESTROY',
-        'win32con.ERROR_ALREADY_EXISTS',
-        'subprocess'
-    ] + collect_submodules('win32gui') + collect_submodules('win32con') + collect_submodules('win32ts'),
+        'win32.win32api',
+        'win32.win32event',
+        'win32.win32service',
+        'win32.win32serviceutil',
+        'win32.win32com.client'
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
     optimize=0,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+# Collect necessary DLLs and binaries
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
+binaries = collect_dynamic_libs('win32gui')
+binaries += collect_dynamic_libs('win32ts')
+binaries += collect_dynamic_libs('win32con')
+binaries += collect_dynamic_libs('win32api')
+binaries += collect_dynamic_libs('win32event')
+a.binaries += binaries
+
+# Collect data files from win32 modules
+datas = collect_data_files('win32gui')
+datas += collect_data_files('win32ts')
+datas += collect_data_files('win32con')
+a.datas += datas
+
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
-    name='power_monitor',
+    name='PowerMonitor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -67,8 +67,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch='x86_64',
+    target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='file_version_info.txt'
 )
