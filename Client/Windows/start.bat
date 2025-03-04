@@ -10,7 +10,7 @@ call test_install.bat
 :: Show installation status
 echo.
 echo Current running processes:
-tasklist | findstr "power_monitor.exe"
+tasklist | findstr "PowerMonitor.exe"
 tasklist | findstr "AttendanceTracker.exe"
 
 :: Keep window open for feedback
