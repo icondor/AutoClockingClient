@@ -1,18 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 a = Analysis(
     ['AttendanceTracker.py'],
     pathex=[],
     binaries=[],
     datas=[('config.json', '.')],
-    hiddenimports=['win32api', 'win32con', 'win32event', 'win32service', 'win32serviceutil', 'win32com.client'],
+    hiddenimports=[
+        'win32api',
+        'win32con',
+        'win32event',
+        'win32service',
+        'win32serviceutil',
+        'win32com.client',
+        'requests'  # Add this
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    noarchive=False,
+    noarchive=False
 )
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
