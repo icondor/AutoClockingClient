@@ -32,13 +32,14 @@ required_modules = {
     'win32api': None,
     'win32con': None,
     'win32event': None,
-    'win32gui': None
+    'win32gui': None,
+    'win32.lib.winerror': None  # Changed to full path
 }
 
 # First, import the core modules we absolutely need
 for module_name in required_modules:
     try:
-        module = __import__(module_name)
+        module = __import__(module_name.split('.')[0], fromlist=module_name.split('.')[1:] if '.' in module_name else [])
         required_modules[module_name] = module
         logging.info(f"Successfully imported {module_name}")
     except ImportError as e:
@@ -50,6 +51,7 @@ win32api = required_modules['win32api']
 win32con = required_modules['win32con']
 win32event = required_modules['win32event']
 win32gui = required_modules['win32gui']
+winerror = required_modules['win32.lib.winerror']
 
 # Try to import optional modules
 try:
@@ -159,6 +161,20 @@ class PowerMonitor:
             if not is_process_running("AttendanceTracker.exe"):
                 logging.error("Process not found after starting")
                 return False
+                
+            # Check attendance.log and attendance.error for startup issues
+            time.sleep(2)  # Give it time to write logs
+            try:
+                with open(log_path, 'r') as f:
+                    log_content = f.read()
+                    if log_content:
+                        logging.info(f"AttendanceTracker log: {log_content}")
+                with open(error_path, 'r') as f:
+                    error_content = f.read()
+                    if error_content:
+                        logging.error(f"AttendanceTracker errors: {error_content}")
+            except Exception as e:
+                logging.error(f"Failed to read AttendanceTracker logs: {e}")
                 
             return True
             
