@@ -19,7 +19,7 @@ jobs:
       shell: pwsh
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r Client/Windows/requirements.txt
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to install dependencies"
             exit 1
