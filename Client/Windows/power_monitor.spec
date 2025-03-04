@@ -13,9 +13,9 @@ a = Analysis(
         'win32serviceutil',
         'win32com.client',
         'win32gui',
-        'win32gui_struct',    # Ensures MSG is available
-        'win32ts',            # For session notifications
-        'win32ts.constants',  # For WM_WTSSESSION_CHANGE etc.
+        'win32gui_struct',
+        'win32ts',
+        'win32ts.constants',
         'win32con.constants',
         'win32.win32gui',
         'win32.win32ts',
@@ -25,17 +25,15 @@ a = Analysis(
         'win32.win32service',
         'win32.win32serviceutil',
         'win32.win32com.client',
-        'win32process'
+        'win32process'  # Added as previously recommended
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    noarchive=False,
-    optimize=0,
+    noarchive=False
 )
 
-# Collect necessary DLLs and binaries
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
 binaries = collect_dynamic_libs('win32gui')
 binaries += collect_dynamic_libs('win32ts')
@@ -44,7 +42,6 @@ binaries += collect_dynamic_libs('win32api')
 binaries += collect_dynamic_libs('win32event')
 a.binaries += binaries
 
-# Collect data files from win32 modules
 datas = collect_data_files('win32gui')
 datas += collect_data_files('win32ts')
 datas += collect_data_files('win32con')
