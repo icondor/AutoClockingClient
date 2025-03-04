@@ -14,13 +14,9 @@ a = Analysis(
         'win32event',
         'win32gui',
         'win32ts',
-        'win32.lib.winerror',  # Changed to full path
-        'win32.lib.win32con',
-        'win32.lib.win32gui',
-        'win32.lib.win32api',
-        'win32.lib.win32event',
         'win32com.client',
-        'subprocess'
+        'subprocess',
+        'winerror'
     ] + collect_submodules('win32gui') + collect_submodules('win32con'),
     hookspath=[],
     hooksconfig={},
