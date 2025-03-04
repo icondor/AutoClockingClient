@@ -24,7 +24,8 @@ a = Analysis(
         'win32.win32event',
         'win32.win32service',
         'win32.win32serviceutil',
-        'win32.win32com.client'
+        'win32.win32com.client',
+        'win32process'
     ],
     hookspath=[],
     hooksconfig={},
