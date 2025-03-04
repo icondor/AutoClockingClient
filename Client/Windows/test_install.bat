@@ -9,21 +9,28 @@ set "CURRENT_DIR=%~dp0"
 
 echo Starting AttendanceTracker installation...
 
-:: Create directories
+:: Create directories (don't fail if they exist)
 echo Creating directories...
-mkdir "%APP_SUPPORT%" 2>nul || (
-    echo Failed to create app directory
-    exit /b 1
+if not exist "%APP_SUPPORT%" (
+    mkdir "%APP_SUPPORT%" 2>nul
+    if errorlevel 1 (
+        echo Failed to create app directory - permission denied
+        exit /b 1
+    )
 )
-mkdir "%LOG_DIR%" 2>nul || (
-    echo Failed to create log directory
-    exit /b 1
+
+if not exist "%LOG_DIR%" (
+    mkdir "%LOG_DIR%" 2>nul
+    if errorlevel 1 (
+        echo Failed to create log directory - permission denied
+        exit /b 1
+    )
 )
 
 :: Create log file
 set "LOG_FILE=%LOG_DIR%\install.log"
 echo Installation started at %date% %time% > "%LOG_FILE%" || (
-    echo Failed to create log file
+    echo Failed to create log file - permission denied
     exit /b 1
 )
 echo Current directory: %CURRENT_DIR% >> "%LOG_FILE%"
