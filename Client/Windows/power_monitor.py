@@ -4,7 +4,6 @@ import logging
 import subprocess
 import time
 import traceback
-from winerror import ERROR_ALREADY_EXISTS  # Import directly from winerror
 
 # Early logging setup with proper fallback
 try:
@@ -286,7 +285,7 @@ def ensure_single_instance():
     try:
         mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
         last_error = win32api.GetLastError()
-        if last_error == ERROR_ALREADY_EXISTS:  # Use the imported constant directly
+        if last_error == 183:  # This is the actual value of ERROR_ALREADY_EXISTS
             logging.info("Another instance of PowerMonitor is running—exiting normally")
             sys.exit(0)
         elif last_error != 0:
