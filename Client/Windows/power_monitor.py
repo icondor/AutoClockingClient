@@ -4,22 +4,28 @@ import logging
 import subprocess
 import time
 import traceback
+import win32gui
+import win32api
+import win32con
+import win32event
 
-# Early logging setup with proper fallback
+# Try to import win32ts, but don't fail if not available
 try:
-    log_dir = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker', 'Logs')
-    os.makedirs(log_dir, exist_ok=True)
-    logging.basicConfig(
-        filename=os.path.join(log_dir, 'power_monitor.log'),
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s'
-    )
-except Exception as e:
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s'
-    )
-    logging.error(f"Failed to setup file logging: {e}. Falling back to stderr.")
+    import win32ts
+    HAS_WIN32TS = True
+except ImportError:
+    HAS_WIN32TS = False
+    logging.warning("win32ts module not available - session notifications will be disabled")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('power_monitor.log'),
+        logging.StreamHandler()
+    ]
+)
 
 logging.info("="*50)
 logging.info("PowerMonitor Starting")
@@ -59,14 +65,6 @@ try:
 except ImportError:
     HAS_WIN32PROCESS = False
     logging.warning("win32process module not available - using alternative process check")
-
-try:
-    import win32ts
-    HAS_WIN32TS = True
-    logging.info("Successfully imported win32ts")
-except ImportError:
-    HAS_WIN32TS = False
-    logging.warning("win32ts module not available - session unlock detection disabled")
 
 def is_process_running(process_name):
     """Check if a process is already running."""
@@ -195,54 +193,124 @@ class PowerMonitor:
         logging.info(f"Handling event: {event_type}")
         return self.launchApp()
 
-def WndProc(hWnd, msg, wParam, lParam):
-    monitor = getattr(sys.modules[__name__], 'monitor', None)
-    if not monitor:
-        return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
-    
-    try:
-        if msg == win32con.WM_POWERBROADCAST:
-            if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
-                if monitor.handleEvent("wake"):
-                    return True
-        # Only handle session change if win32ts is available
-        elif HAS_WIN32TS and hasattr(win32con, 'WM_WTSSESSION_CHANGE'):
-            if msg == win32con.WM_WTSSESSION_CHANGE:
-                if wParam == win32con.WTS_SESSION_UNLOCK:
-                    if monitor.handleEvent("unlock"):
-                        return True
-        elif msg == win32con.WM_DESTROY:
-            win32gui.PostQuitMessage(0)
-            return 0
-    except Exception as e:
-        logging.error(f"Error in WndProc: {e}\n{traceback.format_exc()}")
-    
-    return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
-
 def verify_win32_features():
     """Verify that all required Windows API features are available."""
-    required_features = {
-        'win32gui.MSG': hasattr(win32gui, 'MSG'),
-        'win32con.WM_POWERBROADCAST': hasattr(win32con, 'WM_POWERBROADCAST'),
-        'win32con.PBT_APMRESUMEAUTOMATIC': hasattr(win32con, 'PBT_APMRESUMEAUTOMATIC')
-    }
+    try:
+        # Basic message loop features - don't check for MSG class
+        if not hasattr(win32gui, 'GetMessage'):
+            logging.error("win32gui.GetMessage not available")
+            return False
+        if not hasattr(win32gui, 'TranslateMessage'):
+            logging.error("win32gui.TranslateMessage not available")
+            return False
+        if not hasattr(win32gui, 'DispatchMessage'):
+            logging.error("win32gui.DispatchMessage not available")
+            return False
+            
+        # Power broadcast features
+        if not hasattr(win32con, 'WM_POWERBROADCAST'):
+            logging.error("win32con.WM_POWERBROADCAST not available")
+            return False
+        if not hasattr(win32con, 'PBT_APMRESUMEAUTOMATIC'):
+            logging.error("win32con.PBT_APMRESUMEAUTOMATIC not available")
+            return False
+            
+        logging.info("Basic Windows API features verified")
+        return True
+    except Exception as e:
+        logging.error(f"Error verifying Windows API features: {e}")
+        return False
+
+def run_message_loop(hWnd):
+    """Run the Windows message loop."""
+    session_notifications_registered = False
     
-    # Session notification features are optional
-    if HAS_WIN32TS:
-        required_features.update({
-            'win32con.WM_WTSSESSION_CHANGE': hasattr(win32con, 'WM_WTSSESSION_CHANGE'),
-            'win32con.WTS_SESSION_UNLOCK': hasattr(win32con, 'WTS_SESSION_UNLOCK')
-        })
-    
-    missing_features = [name for name, available in required_features.items() if not available]
-    if missing_features:
-        logging.error(f"Missing required Windows API features: {', '.join(missing_features)}")
+    try:
+        # Create a simple message structure that doesn't rely on win32gui.MSG
+        class SimpleMessage:
+            def __init__(self):
+                self.hWnd = None
+                self.message = 0
+                self.wParam = 0
+                self.lParam = 0
+                
+        msg = SimpleMessage()
+        
+        # Try to register for session notifications if available
+        if HAS_WIN32TS:
+            try:
+                if win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION):
+                    session_notifications_registered = True
+                    logging.info("Successfully registered for session notifications")
+            except Exception as e:
+                logging.warning(f"Session notifications not available: {e}")
+        else:
+            logging.info("Session notifications not available (win32ts not imported)")
+            
+        # Main message loop
+        while True:
+            try:
+                # GetMessage returns (msg, result)
+                result = win32gui.GetMessage(None, 0, 0, 0)
+                
+                if result == 0:  # WM_QUIT
+                    logging.info("Received WM_QUIT, exiting message loop")
+                    break
+                elif result == -1:
+                    logging.error("Error in GetMessage")
+                    break
+                    
+                win32gui.TranslateMessage(None)
+                win32gui.DispatchMessage(None)
+                
+            except Exception as e:
+                logging.error(f"Error in message loop iteration: {e}")
+                break
+                
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
         return False
         
-    logging.info("All required Windows API features are available")
-    if not HAS_WIN32TS:
-        logging.warning("Session unlock detection will be disabled")
-    return True
+    finally:
+        if session_notifications_registered:
+            try:
+                win32ts.WTSUnRegisterSessionNotification(hWnd)
+                logging.info("Unregistered session notifications")
+            except Exception as e:
+                logging.warning(f"Failed to unregister session notifications: {e}")
+
+def WndProc(hWnd, msg, wParam, lParam):
+    """Window procedure for handling Windows messages."""
+    try:
+        monitor = getattr(sys.modules[__name__], 'monitor', None)
+        if not monitor:
+            return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
+            
+        # Handle power events
+        if msg == win32con.WM_POWERBROADCAST:
+            if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
+                logging.info("Received power resume event")
+                if monitor.handleEvent("wake"):
+                    return True
+                    
+        # Handle session events if available
+        elif HAS_WIN32TS and msg == win32con.WM_WTSSESSION_CHANGE:
+            if wParam == win32con.WTS_SESSION_UNLOCK:
+                logging.info("Received session unlock event")
+                if monitor.handleEvent("unlock"):
+                    return True
+                    
+        elif msg == win32con.WM_DESTROY:
+            logging.info("Received WM_DESTROY")
+            win32gui.PostQuitMessage(0)
+            return 0
+            
+    except Exception as e:
+        logging.error(f"Error in WndProc: {e}\n{traceback.format_exc()}")
+        
+    return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
 
 def create_window():
     try:
@@ -285,7 +353,7 @@ def ensure_single_instance():
     try:
         mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
         last_error = win32api.GetLastError()
-        if last_error == 183:  # This is the actual value of ERROR_ALREADY_EXISTS
+        if last_error == win32con.ERROR_ALREADY_EXISTS:
             logging.info("Another instance of PowerMonitor is running—exiting normally")
             sys.exit(0)
         elif last_error != 0:
@@ -296,44 +364,6 @@ def ensure_single_instance():
     except Exception as e:
         logging.error(f"Failed to create/check mutex: {e}\n{traceback.format_exc()}")
         sys.exit(1)
-
-def run_message_loop(hWnd):
-    try:
-        # Verify Windows API features before starting
-        if not verify_win32_features():
-            logging.error("Required Windows API features not available")
-            return False
-            
-        # Register for session notifications only if available
-        session_notifications_registered = False
-        if HAS_WIN32TS:
-            try:
-                result = win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION)
-                if result:
-                    session_notifications_registered = True
-                    logging.info("Successfully registered for session notifications")
-                else:
-                    logging.warning("Failed to register for session notifications - continuing without")
-            except Exception as e:
-                logging.warning(f"Could not register for session notifications: {e}")
-        
-        # Message loop
-        msg = win32gui.MSG()
-        while win32gui.GetMessage(msg, 0, 0, 0) > 0:
-            win32gui.TranslateMessage(msg)
-            win32gui.DispatchMessage(msg)
-        
-        return True
-        
-    except Exception as e:
-        logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
-        return False
-    finally:
-        if session_notifications_registered:
-            try:
-                win32ts.WTSUnRegisterSessionNotification(hWnd)
-            except Exception as e:
-                logging.warning(f"Error unregistering session notification: {e}")
 
 if __name__ == '__main__':
     try:
