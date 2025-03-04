@@ -32,14 +32,13 @@ required_modules = {
     'win32api': None,
     'win32con': None,
     'win32event': None,
-    'win32gui': None,
-    'win32.lib.winerror': None  # Changed to full path
+    'win32gui': None
 }
 
 # First, import the core modules we absolutely need
 for module_name in required_modules:
     try:
-        module = __import__(module_name.split('.')[0], fromlist=module_name.split('.')[1:] if '.' in module_name else [])
+        module = __import__(module_name)
         required_modules[module_name] = module
         logging.info(f"Successfully imported {module_name}")
     except ImportError as e:
@@ -51,7 +50,6 @@ win32api = required_modules['win32api']
 win32con = required_modules['win32con']
 win32event = required_modules['win32event']
 win32gui = required_modules['win32gui']
-winerror = required_modules['win32.lib.winerror']
 
 # Try to import optional modules
 try:
@@ -287,7 +285,7 @@ def ensure_single_instance():
     try:
         mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
         last_error = win32api.GetLastError()
-        if last_error == winerror.ERROR_ALREADY_EXISTS:
+        if last_error == win32con.ERROR_ALREADY_EXISTS:
             logging.info("Another instance of PowerMonitor is running—exiting normally")
             sys.exit(0)
         elif last_error != 0:
