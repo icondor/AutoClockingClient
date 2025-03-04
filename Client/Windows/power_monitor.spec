@@ -13,9 +13,9 @@ a = Analysis(
         'win32serviceutil',
         'win32com.client',
         'win32gui',
-        'win32gui_struct',
-        'win32ts',
-        'win32ts.constants',
+        'win32gui_struct',    # Ensures MSG is available if needed
+        'win32ts',            # For session notifications
+        'win32ts.constants',  # For WM_WTSSESSION_CHANGE etc.
         'win32con.constants',
         'win32.win32gui',
         'win32.win32ts',

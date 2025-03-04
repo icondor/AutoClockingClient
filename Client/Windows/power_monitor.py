@@ -53,7 +53,6 @@ required_modules = {
     'win32gui': None
 }
 
-# First, import the core modules we absolutely need
 for module_name in required_modules:
     try:
         module = __import__(module_name)
@@ -63,13 +62,11 @@ for module_name in required_modules:
         logging.error(f"Failed to import {module_name}: {e}")
         sys.exit(1)
 
-# Now we can safely use these modules
 win32api = required_modules['win32api']
 win32con = required_modules['win32con']
 win32event = required_modules['win32event']
 win32gui = required_modules['win32gui']
 
-# Try to import optional modules
 try:
     import win32process
     HAS_WIN32PROCESS = True
@@ -81,7 +78,6 @@ except ImportError:
 def is_process_running(process_name):
     """Check if a process is already running."""
     try:
-        # Use tasklist to find process
         result = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {process_name}'], 
                               capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return process_name.lower() in result.stdout.lower()
@@ -101,14 +97,13 @@ class PowerMonitor:
             self.max_retries = 10
             self.retry_count = 0
             self.last_retry_time = 0
-            self.retry_reset_interval = 3600  # Reset retry count after 1 hour
+            self.retry_reset_interval = 3600
             logging.info("PowerMonitor initialized successfully")
         except Exception as e:
             logging.error(f"Failed to initialize PowerMonitor: {e}\n{traceback.format_exc()}")
             raise
         
     def _should_reset_retries(self):
-        """Check if we should reset the retry counter based on time elapsed"""
         current_time = time.time()
         if current_time - self.last_retry_time > self.retry_reset_interval:
             self.retry_count = 0
@@ -121,21 +116,18 @@ class PowerMonitor:
         stdout = stderr = None
         try:
             current_time = time.time()
-            
-            # Check retry limits
-            self._should_reset_retries()  # Maybe reset retry counter
+            self._should_reset_retries()
             if self.retry_count >= self.max_retries:
-                logging.error(f"Maximum retry attempts ({self.max_retries}) reached. Waiting for retry counter reset.")
+                logging.error(f"Maximum retry attempts ({self.max_retries}) reached.")
                 return False
                 
             if current_time - self.last_event_time < self.min_event_interval:
                 logging.info("Skipping launch due to recent event")
                 return True
 
-            # Check if AttendanceTracker is already running
             if is_process_running("AttendanceTracker.exe"):
                 logging.info("AttendanceTracker is already running")
-                self.retry_count = 0  # Reset counter on successful check
+                self.retry_count = 0
                 return True
             
             self.last_event_time = current_time
@@ -151,20 +143,14 @@ class PowerMonitor:
                 logging.error(f"AttendanceTracker not found at: {app_path}")
                 return False
             
-            # Use the standardized log paths
             stdout = open(attendance_log, 'a')
             stderr = open(attendance_error, 'a')
             
-            # Use all available flags to hide the window
-            creation_flags = (
-                subprocess.CREATE_NO_WINDOW |      # Don't create a console window
-                subprocess.DETACHED_PROCESS |      # Detach from parent process
-                subprocess.SW_HIDE                 # Hide any window that might appear
-            )
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.SW_HIDE
             
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE  # Hide the window
+            startupinfo.wShowWindow = subprocess.SW_HIDE
             
             process = subprocess.Popen(
                 [app_path],
@@ -176,25 +162,17 @@ class PowerMonitor:
             )
             logging.info(f"Launched AttendanceTracker with PID {process.pid}")
             
-            # Verify process started successfully
             time.sleep(1)
             if process.poll() is not None:
                 exit_code = process.poll()
                 logging.error(f"Process terminated immediately with code: {exit_code}")
-                stderr.flush()
-                with open(attendance_error, 'r') as f:
-                    errors = f.read()
-                    if errors:
-                        logging.error(f"Process error output: {errors}")
                 return False
                 
-            # Double-check the process is running
             if not is_process_running("AttendanceTracker.exe"):
                 logging.error("Process not found after starting")
                 return False
                 
-            # Check attendance.log and attendance.error for startup issues
-            time.sleep(2)  # Give it time to write logs
+            time.sleep(2)
             try:
                 with open(attendance_log, 'r') as f:
                     log_content = f.read()
@@ -214,45 +192,22 @@ class PowerMonitor:
             return False
         finally:
             if stdout:
-                try:
-                    stdout.close()
-                except:
-                    pass
+                stdout.close()
             if stderr:
-                try:
-                    stderr.close()
-                except:
-                    pass
+                stderr.close()
 
     def handleEvent(self, event_type):
         logging.info(f"Handling event: {event_type}")
         return self.launchApp()
 
 def verify_win32_features():
-    """Verify that all required Windows API features are available."""
     try:
-        # Check for basic window message functions
-        if not hasattr(win32gui, 'PeekMessage'):
-            logging.error("win32gui.PeekMessage not available")
+        if not hasattr(win32gui, 'PeekMessage') or not hasattr(win32gui, 'TranslateMessage') or not hasattr(win32gui, 'DispatchMessage'):
+            logging.error("Required win32gui message functions not available")
             return False
-        if not hasattr(win32gui, 'TranslateMessage'):
-            logging.error("win32gui.TranslateMessage not available")
+        if not hasattr(win32con, 'WM_QUIT') or not hasattr(win32con, 'WM_POWERBROADCAST') or not hasattr(win32con, 'PBT_APMRESUMEAUTOMATIC'):
+            logging.error("Required win32con constants not available")
             return False
-        if not hasattr(win32gui, 'DispatchMessage'):
-            logging.error("win32gui.DispatchMessage not available")
-            return False
-            
-        # Check for window constants
-        if not hasattr(win32con, 'WM_QUIT'):
-            logging.error("win32con.WM_QUIT not available")
-            return False
-        if not hasattr(win32con, 'WM_POWERBROADCAST'):
-            logging.error("win32con.WM_POWERBROADCAST not available")
-            return False
-        if not hasattr(win32con, 'PBT_APMRESUMEAUTOMATIC'):
-            logging.error("win32con.PBT_APMRESUMEAUTOMATIC not available")
-            return False
-            
         logging.info("Basic Windows API features verified")
         return True
     except Exception as e:
@@ -260,11 +215,8 @@ def verify_win32_features():
         return False
 
 def run_message_loop(hWnd):
-    """Run the Windows message loop."""
     session_notifications_registered = False
-    
     try:
-        # Try to register for session notifications if available
         if HAS_WIN32TS:
             try:
                 if win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION):
@@ -272,39 +224,23 @@ def run_message_loop(hWnd):
                     logging.info("Successfully registered for session notifications")
             except Exception as e:
                 logging.warning(f"Session notifications not available: {e}")
-        else:
-            logging.info("Session notifications not available (win32ts not imported)")
-            
-        # Message loop that properly waits for Windows messages
+        
+        # Use MSG structure for proper message handling
         msg = win32gui.MSG()
         while True:
-            # GetMessage will block until a message is received
-            # Returns:
-            # - 0 if WM_QUIT is received
-            # - -1 on error
-            # - 1 if a message was retrieved
             result = win32gui.GetMessage(msg, hWnd, 0, 0)
-            
-            if result == 0:  # WM_QUIT received
+            if result == 0:  # WM_QUIT
                 logging.info("Received WM_QUIT, exiting message loop")
                 break
             elif result == -1:
                 logging.error("Error in GetMessage")
                 break
-                
-            try:
-                win32gui.TranslateMessage(msg)
-                win32gui.DispatchMessage(msg)
-            except Exception as e:
-                logging.error(f"Error dispatching message: {e}")
-                continue
-                
+            win32gui.TranslateMessage(msg)
+            win32gui.DispatchMessage(msg)
         return True
-        
     except Exception as e:
         logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
         return False
-        
     finally:
         if session_notifications_registered:
             try:
@@ -314,13 +250,11 @@ def run_message_loop(hWnd):
                 logging.warning(f"Failed to unregister session notifications: {e}")
 
 def WndProc(hWnd, msg, wParam, lParam):
-    """Window procedure for handling Windows messages."""
     try:
         monitor = getattr(sys.modules[__name__], 'monitor', None)
         if not monitor:
             return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
             
-        # Handle power events
         if msg == win32con.WM_POWERBROADCAST:
             logging.info(f"Received power event: wParam={wParam}")
             if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
@@ -335,7 +269,6 @@ def WndProc(hWnd, msg, wParam, lParam):
                 logging.info("System going to suspend")
                 return True
                     
-        # Handle session events if available
         elif HAS_WIN32TS and msg == win32con.WM_WTSSESSION_CHANGE:
             logging.info(f"Received session event: wParam={wParam}")
             if wParam == win32con.WTS_SESSION_UNLOCK:
@@ -376,46 +309,31 @@ def WndProc(hWnd, msg, wParam, lParam):
 
 def create_window():
     try:
-        # Initialize window class
         wc = win32gui.WNDCLASS()
         wc.lpfnWndProc = WndProc
         wc.lpszClassName = "PowerMonitorWindow"
         wc.hInstance = win32api.GetModuleHandle(None)
-        wc.style = win32con.CS_GLOBALCLASS  # Make it a global class
+        wc.style = win32con.CS_GLOBALCLASS
         
-        # Register class
-        try:
-            class_atom = win32gui.RegisterClass(wc)
-        except Exception as e:
-            logging.error(f"Failed to register window class: {e}")
+        class_atom = win32gui.RegisterClass(wc)
+        
+        style = win32con.WS_OVERLAPPED
+        hWnd = win32gui.CreateWindow(
+            class_atom,
+            "PowerMonitor",
+            style,
+            0, 0, 0, 0,
+            0, 0,
+            wc.hInstance,
+            None
+        )
+        if not hWnd:
+            logging.error("CreateWindow returned NULL")
             return None
             
-        # Create window with specific styles for system events
-        try:
-            style = win32con.WS_OVERLAPPED
-            hWnd = win32gui.CreateWindow(
-                class_atom,
-                "PowerMonitor",
-                style,
-                0, 0, 0, 0,  # X, Y, W, H
-                0,  # No parent
-                0,  # No menu
-                wc.hInstance,
-                None
-            )
-            if not hWnd:
-                logging.error("CreateWindow returned NULL")
-                return None
-                
-            # Make sure we receive power notifications
-            win32gui.SendMessage(hWnd, win32con.WM_POWERBROADCAST, 
-                               win32con.PBT_APMRESUMEAUTOMATIC, 0)
-                
-            return hWnd
-        except Exception as e:
-            logging.error(f"Failed to create window: {e}")
-            return None
-            
+        win32gui.SendMessage(hWnd, win32con.WM_POWERBROADCAST, 
+                           win32con.PBT_APMRESUMEAUTOMATIC, 0)
+        return hWnd
     except Exception as e:
         logging.error(f"Error in create_window: {e}\n{traceback.format_exc()}")
         return None
@@ -424,8 +342,8 @@ def ensure_single_instance():
     try:
         mutex = win32event.CreateMutex(None, True, "Global\\AttendanceTracker_PowerMonitor")
         last_error = win32api.GetLastError()
-        if last_error == 183:  # ERROR_ALREADY_EXISTS = 183
-            logging.info("Another instance of PowerMonitor is running—exiting normally")
+        if last_error == winerror.ERROR_ALREADY_EXISTS:
+            logging.info("Another instance of PowerMonitor is running—exiting")
             sys.exit(0)
         elif last_error != 0:
             logging.error(f"Mutex creation failed with error: {last_error}")
@@ -441,24 +359,20 @@ if __name__ == '__main__':
         logging.info("PowerMonitor main entry point")
         ensure_single_instance()
         
-        # Kill any existing AttendanceTracker instances
         if is_process_running("AttendanceTracker.exe"):
             subprocess.run(['taskkill', '/F', '/IM', 'AttendanceTracker.exe'], 
                          capture_output=True)
             time.sleep(1)
         
-        logging.info("Creating PowerMonitor instance")
         sys.modules[__name__].monitor = PowerMonitor()
         logging.info("PowerMonitor instance created successfully")
         
-        logging.info("Creating window")
         hWnd = create_window()
         if not hWnd:
             logging.error("Failed to create window")
             sys.exit(1)
         logging.info("Window created successfully")
         
-        logging.info("Handling startup event")
         if not sys.modules[__name__].monitor.handleEvent("startup"):
             logging.error("Failed to handle startup event")
             sys.exit(1)
@@ -476,7 +390,6 @@ if __name__ == '__main__':
             try:
                 win32gui.DestroyWindow(hWnd)
                 logging.info("Window destroyed successfully")
-                
             except Exception as e:
                 logging.error(f"Failed to destroy window: {e}")
         logging.info("PowerMonitor shutting down")
