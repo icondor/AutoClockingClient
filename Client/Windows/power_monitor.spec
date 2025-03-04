@@ -13,11 +13,13 @@ a = Analysis(
         'win32con',
         'win32event',
         'win32gui',
+        'win32process',
         'win32ts',
         'winerror',
         'subprocess',
         'win32.lib.win32gui',  # Force full win32gui
-        'win32.lib.win32con'   # Force full win32con
+        'win32.lib.win32con',   # Force full win32con
+        'win32com.client'
     ] + collect_submodules('win32gui') + collect_submodules('win32con'),
     hookspath=[],
     hooksconfig={},
@@ -27,6 +29,7 @@ a = Analysis(
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)

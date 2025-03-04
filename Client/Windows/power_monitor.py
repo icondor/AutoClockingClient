@@ -32,8 +32,7 @@ required_modules = {
     'win32api': None,
     'win32con': None,
     'win32event': None,
-    'win32gui': None,
-    'win32process': None
+    'win32gui': None
 }
 
 # First, import the core modules we absolutely need
@@ -51,10 +50,16 @@ win32api = required_modules['win32api']
 win32con = required_modules['win32con']
 win32event = required_modules['win32event']
 win32gui = required_modules['win32gui']
-win32process = required_modules['win32process']
-winerror = __import__('winerror')
 
 # Try to import optional modules
+try:
+    import win32process
+    HAS_WIN32PROCESS = True
+    logging.info("Successfully imported win32process")
+except ImportError:
+    HAS_WIN32PROCESS = False
+    logging.warning("win32process module not available - using alternative process check")
+
 try:
     import win32ts
     HAS_WIN32TS = True
@@ -66,8 +71,9 @@ except ImportError:
 def is_process_running(process_name):
     """Check if a process is already running."""
     try:
+        # Use tasklist to find process
         result = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {process_name}'], 
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return process_name.lower() in result.stdout.lower()
     except Exception as e:
         logging.error(f"Error checking process status: {e}")
