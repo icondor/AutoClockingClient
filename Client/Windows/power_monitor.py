@@ -19,11 +19,21 @@ except ImportError:
     logging.warning("win32ts module not available - session notifications will be disabled")
 
 # Configure logging
+app_support = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker')
+logs_dir = os.path.join(app_support, 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# Define log file paths
+power_monitor_log = os.path.join(logs_dir, 'power_monitor.log')
+attendance_log = os.path.join(logs_dir, 'attendance.log')
+attendance_error = os.path.join(logs_dir, 'attendance.error')
+install_log = os.path.join(logs_dir, 'install.log')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler('power_monitor.log'),
+        logging.FileHandler(power_monitor_log),
         logging.StreamHandler()
     ]
 )
@@ -32,6 +42,7 @@ logging.info("="*50)
 logging.info("PowerMonitor Starting")
 logging.info(f"Current Directory: {os.getcwd()}")
 logging.info(f"Script Location: {os.path.abspath(__file__)}")
+logging.info(f"Logs Directory: {logs_dir}")
 logging.info(f"Python Version: {sys.version}")
 
 # Import Windows modules with proper error handling
@@ -87,15 +98,36 @@ class PowerMonitor:
             
             self.last_event_time = 0
             self.min_event_interval = 5
+            self.max_retries = 10
+            self.retry_count = 0
+            self.last_retry_time = 0
+            self.retry_reset_interval = 3600  # Reset retry count after 1 hour
             logging.info("PowerMonitor initialized successfully")
         except Exception as e:
             logging.error(f"Failed to initialize PowerMonitor: {e}\n{traceback.format_exc()}")
             raise
         
+    def _should_reset_retries(self):
+        """Check if we should reset the retry counter based on time elapsed"""
+        current_time = time.time()
+        if current_time - self.last_retry_time > self.retry_reset_interval:
+            self.retry_count = 0
+            self.last_retry_time = current_time
+            logging.info("Reset retry counter due to time elapsed")
+            return True
+        return False
+        
     def launchApp(self):
         stdout = stderr = None
         try:
             current_time = time.time()
+            
+            # Check retry limits
+            self._should_reset_retries()  # Maybe reset retry counter
+            if self.retry_count >= self.max_retries:
+                logging.error(f"Maximum retry attempts ({self.max_retries}) reached. Waiting for retry counter reset.")
+                return False
+                
             if current_time - self.last_event_time < self.min_event_interval:
                 logging.info("Skipping launch due to recent event")
                 return True
@@ -103,9 +135,14 @@ class PowerMonitor:
             # Check if AttendanceTracker is already running
             if is_process_running("AttendanceTracker.exe"):
                 logging.info("AttendanceTracker is already running")
+                self.retry_count = 0  # Reset counter on successful check
                 return True
             
             self.last_event_time = current_time
+            self.retry_count += 1
+            self.last_retry_time = current_time
+            
+            logging.info(f"Launch attempt {self.retry_count} of {self.max_retries}")
             
             app_path = os.path.join(self.app_support, "AttendanceTracker.exe")
             logging.info(f"Attempting to launch AttendanceTracker from: {app_path}")
@@ -114,12 +151,9 @@ class PowerMonitor:
                 logging.error(f"AttendanceTracker not found at: {app_path}")
                 return False
             
-            # Ensure log files are created with proper permissions
-            log_path = os.path.join(self.app_support, 'attendance.log')
-            error_path = os.path.join(self.app_support, 'attendance.error')
-            
-            stdout = open(log_path, 'a')
-            stderr = open(error_path, 'a')
+            # Use the standardized log paths
+            stdout = open(attendance_log, 'a')
+            stderr = open(attendance_error, 'a')
             
             # Use all available flags to hide the window
             creation_flags = (
@@ -148,7 +182,7 @@ class PowerMonitor:
                 exit_code = process.poll()
                 logging.error(f"Process terminated immediately with code: {exit_code}")
                 stderr.flush()
-                with open(error_path, 'r') as f:
+                with open(attendance_error, 'r') as f:
                     errors = f.read()
                     if errors:
                         logging.error(f"Process error output: {errors}")
@@ -162,11 +196,11 @@ class PowerMonitor:
             # Check attendance.log and attendance.error for startup issues
             time.sleep(2)  # Give it time to write logs
             try:
-                with open(log_path, 'r') as f:
+                with open(attendance_log, 'r') as f:
                     log_content = f.read()
                     if log_content:
                         logging.info(f"AttendanceTracker log: {log_content}")
-                with open(error_path, 'r') as f:
+                with open(attendance_error, 'r') as f:
                     error_content = f.read()
                     if error_content:
                         logging.error(f"AttendanceTracker errors: {error_content}")
@@ -304,18 +338,48 @@ def WndProc(hWnd, msg, wParam, lParam):
             
         # Handle power events
         if msg == win32con.WM_POWERBROADCAST:
+            logging.info(f"Received power event: wParam={wParam}")
             if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
-                logging.info("Received power resume event")
+                logging.info("System resuming from suspend")
                 if monitor.handleEvent("wake"):
                     return True
+            elif wParam == win32con.PBT_APMRESUMESUSPEND:
+                logging.info("System resuming from suspend (user triggered)")
+                if monitor.handleEvent("wake"):
+                    return True
+            elif wParam == win32con.PBT_APMSUSPEND:
+                logging.info("System going to suspend")
+                return True
                     
         # Handle session events if available
         elif HAS_WIN32TS and msg == win32con.WM_WTSSESSION_CHANGE:
+            logging.info(f"Received session event: wParam={wParam}")
             if wParam == win32con.WTS_SESSION_UNLOCK:
-                logging.info("Received session unlock event")
+                logging.info("Session unlocked")
                 if monitor.handleEvent("unlock"):
                     return True
+            elif wParam == win32con.WTS_SESSION_LOGON:
+                logging.info("User logged on")
+                if monitor.handleEvent("logon"):
+                    return True
+            elif wParam == win32con.WTS_SESSION_LOGOFF:
+                logging.info("User logged off")
+                return True
+            elif wParam == win32con.WTS_SESSION_LOCK:
+                logging.info("Session locked")
+                return True
                     
+        elif msg == win32con.WM_QUERYENDSESSION:
+            logging.info("System shutdown/restart/logoff requested")
+            return True
+            
+        elif msg == win32con.WM_ENDSESSION:
+            logging.info("System session is ending")
+            if wParam:
+                logging.info("Session is actually ending")
+                win32gui.PostQuitMessage(0)
+            return 0
+            
         elif msg == win32con.WM_DESTROY:
             logging.info("Received WM_DESTROY")
             win32gui.PostQuitMessage(0)
@@ -333,6 +397,7 @@ def create_window():
         wc.lpfnWndProc = WndProc
         wc.lpszClassName = "PowerMonitorWindow"
         wc.hInstance = win32api.GetModuleHandle(None)
+        wc.style = win32con.CS_GLOBALCLASS  # Make it a global class
         
         # Register class
         try:
@@ -341,19 +406,27 @@ def create_window():
             logging.error(f"Failed to register window class: {e}")
             return None
             
-        # Create window
+        # Create window with specific styles for system events
         try:
+            style = win32con.WS_OVERLAPPED
             hWnd = win32gui.CreateWindow(
                 class_atom,
                 "PowerMonitor",
-                0, 0, 0, 0, 0,  # Style, X, Y, W, H
-                0, 0,  # Parent, Menu
+                style,
+                0, 0, 0, 0,  # X, Y, W, H
+                0,  # No parent
+                0,  # No menu
                 wc.hInstance,
                 None
             )
             if not hWnd:
                 logging.error("CreateWindow returned NULL")
                 return None
+                
+            # Make sure we receive power notifications
+            win32gui.SendMessage(hWnd, win32con.WM_POWERBROADCAST, 
+                               win32con.PBT_APMRESUMEAUTOMATIC, 0)
+                
             return hWnd
         except Exception as e:
             logging.error(f"Failed to create window: {e}")
