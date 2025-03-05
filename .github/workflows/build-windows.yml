@@ -17,14 +17,25 @@ jobs:
         architecture: 'x64'
     - name: Install dependencies
       shell: pwsh
+      working-directory: Client/Windows  # Move here to match requirements.txt location
       run: |
+        Write-Host "Installing dependencies..."
         python -m pip install --upgrade pip
-        pip install -r Client/Windows/requirements.txt
+        if (-not (Test-Path requirements.txt)) {
+            Write-Error "requirements.txt not found in Client/Windows!"
+            exit 1
+        }
+        pip install -r requirements.txt
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to install dependencies"
+            Write-Error "Failed to install dependencies from requirements.txt"
             exit 1
         }
         pip list | Out-File pip_list.txt
+        # Verify pywin32 attributes
+        python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG'))" | Out-File pywin32_check.txt -Append
+        python -c "import win32ts, win32con; print('WM_WTSSESSION_CHANGE:', hasattr(win32con, 'WM_WTSSESSION_CHANGE'))" | Out-File win32ts_check.txt -Append
+        # Check pywin32 DLLs
+        dir $env:LOCALAPPDATA\Programs\Python\Python312\Lib\site-packages\pywin32_system32 | Out-File dll_check.txt
     - name: Build executables
       shell: pwsh
       working-directory: Client/Windows
@@ -39,9 +50,10 @@ jobs:
             exit 1
         }
         Write-Host "Building AttendanceTracker.exe..."
-        python -m PyInstaller --clean AttendanceTracker.spec
+        python -m PyInstaller --clean --log-level DEBUG AttendanceTracker.spec 2>&1 | Tee-Object -FilePath "pyinstaller_attendance_log.txt"
         if (-not (Test-Path "dist/AttendanceTracker.exe")) {
             Write-Error "Failed to build AttendanceTracker.exe"
+            Get-Content "pyinstaller_attendance_log.txt"
             exit 1
         }
         Write-Host "Contents of dist directory:"
@@ -52,28 +64,4 @@ jobs:
         Write-Host "Copying files to root for flat zip..."
         Copy-Item "Client/Windows/dist/PowerMonitor.exe" "./" -Force -ErrorAction Stop
         Copy-Item "Client/Windows/dist/AttendanceTracker.exe" "./" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/config.json" "./" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/test_install.bat" "./" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/uninstall.bat" "./" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/start.bat" "./" -Force -ErrorAction Stop
-        Write-Host "Package contents:"
-        Get-ChildItem | Where-Object { $_.Name -in "PowerMonitor.exe", "AttendanceTracker.exe", "config.json", "test_install.bat", "uninstall.bat", "start.bat" } | Format-Table Name, Length
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: AttendanceTracker-Windows-x64
-        path: |
-          PowerMonitor.exe
-          AttendanceTracker.exe
-          config.json
-          test_install.bat
-          uninstall.bat
-          start.bat
-    - name: Upload diagnostic logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: Build-Diagnostics
-        path: |
-          pip_list.txt
-          Client/Windows/pyinstaller_log.txt
+        Copy-Item "Client/Windows/config
