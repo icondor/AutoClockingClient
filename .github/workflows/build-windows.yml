@@ -30,21 +30,27 @@ jobs:
             Write-Error "Failed to install dependencies from requirements.txt"
             exit 1
         }
+        # Ensure pywin32 is fully initialized
+        python -m pip install pywin32 --force-reinstall
+        python -m win32com  # Trigger post-install setup
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to initialize pywin32"
+            exit 1
+        }
         pip list | Out-File pip_list.txt
-        # Verify pywin32 attributes
-        python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG'))" | Out-File pywin32_check.txt -Append
-        python -c "import win32ts, win32con; print('WM_WTSSESSION_CHANGE:', hasattr(win32con, 'WM_WTSSESSION_CHANGE'))" | Out-File win32ts_check.txt -Append
-        # Check pywin32 DLLs in hosted tool cache
+        # Enhanced pywin32 checks
+        python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG')); print('Win32gui version:', win32gui.__version__)" | Out-File pywin32_check.txt -Append
+        python -c "import win32ts, win32con; print('WM_WTSSESSION_CHANGE:', hasattr(win32con, 'WM_WTSSESSION_CHANGE')); print('WTS constants:', [x for x in dir(win32ts) if x.startswith('WTS_')])" | Out-File win32ts_check.txt -Append
+        # DLL check
         $pywin32_dll_path = "$env:RUNNER_TOOL_CACHE\Python\3.12.9\x64\Lib\site-packages\pywin32_system32"
         if (Test-Path $pywin32_dll_path) {
             dir $pywin32_dll_path | Out-File dll_check.txt
         } else {
-            Write-Host "pywin32_system32 not found in expected hosted tool cache path, checking alternate location..."
+            Write-Host "pywin32_system32 not found in expected path; trying alternate..."
             $alt_path = (python -c "import site; print(site.getsitepackages()[0])" | Out-String).Trim() + "\pywin32_system32"
             if (Test-Path $alt_path) {
                 dir $alt_path | Out-File dll_check.txt
             } else {
-                Write-Host "No pywin32_system32 directory found; DLLs may be elsewhere or missing."
                 "No pywin32_system32 directory found" | Out-File dll_check.txt
             }
         }
