@@ -19,19 +19,17 @@ except ImportError:
 
 WM_WTSSESSION_CHANGE_FALLBACK = 0x02B1
 
-# Configure logging
+# Configure logging for PowerMonitor
 app_support = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker')
 logs_dir = os.path.join(app_support, 'logs')
 os.makedirs(logs_dir, exist_ok=True)
 
-power_monitor_log = os.path.join(logs_dir, 'power_monitor.log')
-attendance_log = os.path.join(logs_dir, 'attendance.log')
-attendance_error = os.path.join(logs_dir, 'attendance.error')
+power_monitor_log = os.path.join(logs_dir, 'powermonitor.log')  # Renamed for consistency
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.FileHandler(power_monitor_log), logging.StreamHandler()]
+    handlers=[logging.FileHandler(power_monitor_log)]  # Log only to file
 )
 
 # Import Windows modules with proper error handling
@@ -115,7 +113,6 @@ class PowerMonitor:
         return False
 
     def launchApp(self):
-        stdout = stderr = None
         try:
             current_time = time.time()
             self._should_reset_retries()
@@ -137,12 +134,10 @@ class PowerMonitor:
             if not os.path.exists(app_path):
                 logging.error(f"AttendanceTracker not found at: {app_path}")
                 return False
-            stdout = open(attendance_log, 'a')
-            stderr = open(attendance_error, 'a')
             process = subprocess.Popen(
                 [app_path],
-                stdout=stdout,
-                stderr=stderr,
+                stdout=subprocess.DEVNULL,  # Discard stdout
+                stderr=subprocess.DEVNULL,  # Discard stderr
                 cwd=self.app_support,
                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.SW_HIDE,
                 startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=subprocess.SW_HIDE)
@@ -159,11 +154,6 @@ class PowerMonitor:
         except Exception as e:
             logging.error(f"Error launching app: {e}\n{traceback.format_exc()}")
             return False
-        finally:
-            if stdout:
-                stdout.close()
-            if stderr:
-                stderr.close()
 
     def handleEvent(self, event_type):
         logging.info(f"Handling event: {event_type}")
@@ -183,7 +173,6 @@ def run_message_loop(hWnd):
             logging.warning("win32gui.MSG not available; using polling mode")
             monitor.handleEvent("startup")  # Launch on start
             while True:
-                # Poll power state
                 power_state = win32gui.SystemParametersInfo(win32con.SPI_GETPOWEROFFACTIVE)
                 if last_power_state is not None and power_state != last_power_state:
                     if not power_state:
