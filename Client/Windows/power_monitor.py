@@ -253,4 +253,74 @@ def WndProc(hWnd, msg, wParam, lParam):
                     logging.info("Session locked")
                     return True
         elif msg == win32con.WM_QUERYENDSESSION:
-            logging.info("System shutdown/restart/log
+            logging.info("System shutdown/restart/logoff requested")
+            return True
+        elif msg == win32con.WM_ENDSESSION:
+            logging.info("System session is ending")
+            if wParam:
+                logging.info("Session is actually ending")
+                win32gui.PostQuitMessage(0)
+            return 0
+        elif msg == win32con.WM_DESTROY:
+            logging.info("Received WM_DESTROY")
+            win32gui.PostQuitMessage(0)
+            return 0
+    except Exception as e:
+        logging.error(f"Error in WndProc: {e}\n{traceback.format_exc()}")
+    return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
+
+def create_window():
+    try:
+        wc = win32gui.WNDCLASS()
+        wc.lpfnWndProc = WndProc
+        wc.lpszClassName = "PowerMonitorWindow"
+        wc.hInstance = win32api.GetModuleHandle(None)
+        wc.style = win32con.CS_GLOBALCLASS
+        class_atom = win32gui.RegisterClass(wc)
+        style = win32con.WS_OVERLAPPED
+        hWnd = win32gui.CreateWindow(
+            class_atom,
+            "PowerMonitor",
+            style,
+            0, 0, 0, 0,
+            0, 0,
+            wc.hInstance,
+            None
+        )
+        if not hWnd:
+            logging.error("CreateWindow returned NULL")
+            return None
+        win32gui.SendMessage(hWnd, win32con.WM_POWERBROADCAST, 
+                           win32con.PBT_APMRESUMEAUTOMATIC, 0)
+        return hWnd
+    except Exception as e:
+        logging.error(f"Error in create_window: {e}\n{traceback.format_exc()}")
+        return None
+
+if __name__ == '__main__':
+    try:
+        logging.info("PowerMonitor main entry point")
+        ensure_single_instance()
+        if is_process_running("AttendanceTracker.exe"):
+            subprocess.run(['taskkill', '/F', '/IM', 'AttendanceTracker.exe'], capture_output=True)
+            time.sleep(1)
+        sys.modules[__name__].monitor = PowerMonitor()
+        logging.info("PowerMonitor instance created successfully")
+        hWnd = create_window()
+        if not hWnd:
+            logging.error("Failed to create window")
+            sys.exit(1)
+        logging.info("Window created successfully")
+        logging.info("Entering message loop")
+        run_message_loop(hWnd)
+    except Exception as e:
+        logging.error(f"Fatal error in PowerMonitor: {e}\n{traceback.format_exc()}")
+        sys.exit(1)
+    finally:
+        if 'hWnd' in locals() and hWnd:
+            try:
+                win32gui.DestroyWindow(hWnd)
+                logging.info("Window destroyed successfully")
+            except Exception as e:
+                logging.error(f"Failed to destroy window: {e}")
+        logging.info("PowerMonitor shutting down")
