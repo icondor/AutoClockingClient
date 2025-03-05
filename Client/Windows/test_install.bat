@@ -88,4 +88,50 @@ xcopy /Y /F "%CURRENT_DIR%config.json" "%APP_SUPPORT%\" >>"%LOG_FILE%" 2>&1
 if not exist "%APP_SUPPORT%\config.json" (
     echo Error: Failed to copy config.json
     echo Error: Failed to copy config.json >> "%LOG_FILE%"
-    exit /
+    exit /b 1
+)
+
+:: Create startup entry
+echo Creating startup entry...
+set "STARTUP_SCRIPT=%STARTUP_DIR%\AttendanceTracker_PowerMonitor.bat"
+(
+    echo @echo off
+    echo cd /d "%APP_SUPPORT%"
+    echo start "" /B "%APP_SUPPORT%\PowerMonitor.exe"
+) > "%STARTUP_SCRIPT%" || (
+    echo Failed to create startup entry
+    echo Failed to create startup entry >> "%LOG_FILE%"
+    exit /b 1
+)
+
+if not exist "%STARTUP_SCRIPT%" (
+    echo Error: Startup script not created
+    echo Error: Startup script not created >> "%LOG_FILE%"
+    exit /b 1
+)
+echo Created startup entry >> "%LOG_FILE%"
+
+:: Start PowerMonitor
+echo Starting PowerMonitor...
+cd /d "%APP_SUPPORT%" || (
+    echo Failed to change directory
+    echo Failed to change directory >> "%LOG_FILE%"
+    exit /b 1
+)
+start "" /B "%APP_SUPPORT%\PowerMonitor.exe"
+
+:: Verify process started
+timeout /t 3 /nobreak >nul
+tasklist /FI "IMAGENAME eq PowerMonitor.exe" | find "PowerMonitor.exe" >nul
+if !errorlevel! equ 0 (
+    echo ✓ PowerMonitor is running
+    echo PowerMonitor started successfully >> "%LOG_FILE%"
+) else (
+    echo × Failed to start PowerMonitor
+    echo Failed to start PowerMonitor >> "%LOG_FILE%"
+    exit /b 1
+)
+
+echo Installation completed successfully
+echo Installation completed successfully at %date% %time% >> "%LOG_FILE%"
+exit /b 0
