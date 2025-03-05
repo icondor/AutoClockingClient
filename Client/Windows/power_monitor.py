@@ -183,8 +183,8 @@ def run_message_loop(hWnd):
             logging.warning("win32gui.MSG not available; using polling mode")
             monitor.handleEvent("startup")  # Launch on start
             while True:
-                # Poll power state
-                power_state = win32gui.SystemParametersInfo(win32con.SPI_GETPOWEROFFACTIVE, 0, None, 0)
+                # Poll power state (fixed: 3 args)
+                power_state = win32gui.SystemParametersInfo(win32con.SPI_GETPOWEROFFACTIVE, 0, None)
                 if last_power_state is not None and power_state != last_power_state:
                     if not power_state:
                         logging.info("System resumed from suspend (polling)")
