@@ -18,6 +18,9 @@ except ImportError:
     HAS_WIN32TS = False
     logging.warning("win32ts module not available - session notifications will be disabled")
 
+# Fallback constant for WM_WTSSESSION_CHANGE (Windows API value: 0x02B1)
+WM_WTSSESSION_CHANGE_FALLBACK = 0x02B1
+
 # Configure logging
 app_support = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker')
 logs_dir = os.path.join(app_support, 'logs')
@@ -225,8 +228,14 @@ def run_message_loop(hWnd):
             except Exception as e:
                 logging.warning(f"Session notifications not available: {e}")
         
-        # Use MSG structure for proper message handling
-        msg = win32gui.MSG()
+        # Use MSG structure with fallback
+        msg_class = getattr(win32gui, 'MSG', None)
+        if not msg_class:
+            logging.error("win32gui.MSG not available; message loop disabled")
+            monitor.handleEvent("startup")  # Run startup event as fallback
+            return False
+        msg = msg_class()
+        
         while True:
             result = win32gui.GetMessage(msg, hWnd, 0, 0)
             if result == 0:  # WM_QUIT
@@ -269,22 +278,25 @@ def WndProc(hWnd, msg, wParam, lParam):
                 logging.info("System going to suspend")
                 return True
                     
-        elif HAS_WIN32TS and msg == win32con.WM_WTSSESSION_CHANGE:
-            logging.info(f"Received session event: wParam={wParam}")
-            if wParam == win32con.WTS_SESSION_UNLOCK:
-                logging.info("Session unlocked")
-                if monitor.handleEvent("unlock"):
+        elif HAS_WIN32TS:
+            # Use fallback if WM_WTSSESSION_CHANGE is missing
+            session_change_msg = getattr(win32con, 'WM_WTSSESSION_CHANGE', WM_WTSSESSION_CHANGE_FALLBACK)
+            if msg == session_change_msg:
+                logging.info(f"Received session event: wParam={wParam}")
+                if wParam == win32con.WTS_SESSION_UNLOCK:
+                    logging.info("Session unlocked")
+                    if monitor.handleEvent("unlock"):
+                        return True
+                elif wParam == win32con.WTS_SESSION_LOGON:
+                    logging.info("User logged on")
+                    if monitor.handleEvent("logon"):
+                        return True
+                elif wParam == win32con.WTS_SESSION_LOGOFF:
+                    logging.info("User logged off")
                     return True
-            elif wParam == win32con.WTS_SESSION_LOGON:
-                logging.info("User logged on")
-                if monitor.handleEvent("logon"):
+                elif wParam == win32con.WTS_SESSION_LOCK:
+                    logging.info("Session locked")
                     return True
-            elif wParam == win32con.WTS_SESSION_LOGOFF:
-                logging.info("User logged off")
-                return True
-            elif wParam == win32con.WTS_SESSION_LOCK:
-                logging.info("Session locked")
-                return True
                     
         elif msg == win32con.WM_QUERYENDSESSION:
             logging.info("System shutdown/restart/logoff requested")

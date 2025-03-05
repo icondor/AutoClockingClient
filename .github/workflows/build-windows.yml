@@ -30,18 +30,23 @@ jobs:
             Write-Error "Failed to install dependencies from requirements.txt"
             exit 1
         }
-        # Ensure pywin32 is fully initialized
-        python -m pip install pywin32 --force-reinstall
+        # Force clean pywin32 setup
+        pip uninstall pywin32 -y
+        python -m pip install pywin32==308 --force-reinstall --verbose | Out-File pywin32_install_log.txt -Append
         python "$env:RUNNER_TOOL_CACHE\Python\3.12.9\x64\Scripts\pywin32_postinstall.py" -install
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to run pywin32_postinstall.py"
             exit 1
         }
+        # Verify pywin32 modules
+        python -c "import win32gui, win32gui_struct, win32ts, win32con; print('Loaded pywin32 modules'); print('win32gui_struct:', dir(win32gui_struct))" | Out-File pywin32_verify.txt -Append
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to load pywin32 modules"
+            exit 1
+        }
         pip list | Out-File pip_list.txt
-        # Enhanced pywin32 checks
-        python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG')); print('Win32gui version:', win32gui.__version__)" | Out-File pywin32_check.txt -Append
+        python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG'))" | Out-File pywin32_check.txt -Append
         python -c "import win32ts, win32con; print('WM_WTSSESSION_CHANGE:', hasattr(win32con, 'WM_WTSSESSION_CHANGE')); print('WTS constants:', [x for x in dir(win32ts) if x.startswith('WTS_')])" | Out-File win32ts_check.txt -Append
-        # DLL check
         $pywin32_dll_path = "$env:RUNNER_TOOL_CACHE\Python\3.12.9\x64\Lib\site-packages\pywin32_system32"
         if (Test-Path $pywin32_dll_path) {
             dir $pywin32_dll_path | Out-File dll_check.txt
@@ -111,3 +116,5 @@ jobs:
           Client/Windows/dll_check.txt
           Client/Windows/pyinstaller_log.txt
           Client/Windows/pyinstaller_attendance_log.txt
+          Client/Windows/pywin32_install_log.txt
+          Client/Windows/pywin32_verify.txt
