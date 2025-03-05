@@ -9,6 +9,7 @@ import win32api
 import win32con
 import win32event
 import winerror
+import ctypes  # Added for manual MSG definition
 
 try:
     import win32ts
@@ -61,6 +62,22 @@ try:
 except ImportError:
     HAS_WIN32PROCESS = False
     logging.warning("win32process module not available - using alternative process check")
+
+# Manual definition of MSG if not available in win32gui
+if not hasattr(win32gui, 'MSG'):
+    class MSG(ctypes.Structure):
+        _fields_ = [
+            ('hwnd', ctypes.c_void_p),
+            ('message', ctypes.c_uint),
+            ('wParam', ctypes.c_void_p),
+            ('lParam', ctypes.c_void_p),
+            ('time', ctypes.c_ulong),
+            ('pt', ctypes.c_void_p),
+        ]
+    win32gui.MSG = MSG
+    logging.info("Manually defined win32gui.MSG using ctypes")
+else:
+    logging.info("Using existing win32gui.MSG from pywin32")
 
 def is_process_running(process_name):
     """Check if a process is already running."""
@@ -161,38 +178,23 @@ class PowerMonitor:
 
 def run_message_loop(hWnd):
     session_notifications_registered = False
-    last_power_state = None
     try:
         if HAS_WIN32TS:
             if win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION):
                 session_notifications_registered = True
                 logging.info("Successfully registered for session notifications")
         
-        msg_class = getattr(win32gui, 'MSG', None)
-        if not msg_class:
-            logging.warning("win32gui.MSG not available; using polling mode")
-            monitor.handleEvent("startup")  # Launch on start
-            while True:
-                power_state = win32gui.SystemParametersInfo(win32con.SPI_GETPOWEROFFACTIVE)
-                if last_power_state is not None and power_state != last_power_state:
-                    if not power_state:
-                        logging.info("System resumed from suspend (polling)")
-                        monitor.handleEvent("wake")
-                last_power_state = power_state
-                time.sleep(5)  # Poll every 5s
-                logging.debug("Polling for system events")
-        else:
-            msg = msg_class()
-            while True:
-                result = win32gui.GetMessage(msg, hWnd, 0, 0)
-                if result == 0:
-                    logging.info("Received WM_QUIT, exiting message loop")
-                    break
-                elif result == -1:
-                    logging.error("Error in GetMessage")
-                    break
-                win32gui.TranslateMessage(msg)
-                win32gui.DispatchMessage(msg)
+        msg = win32gui.MSG()
+        while True:
+            result = win32gui.GetMessage(msg, hWnd, 0, 0)
+            if result == 0:
+                logging.info("Received WM_QUIT, exiting message loop")
+                break
+            elif result == -1:
+                logging.error("Error in GetMessage")
+                break
+            win32gui.TranslateMessage(msg)
+            win32gui.DispatchMessage(msg)
         return True
     except Exception as e:
         logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
