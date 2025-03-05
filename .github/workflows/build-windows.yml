@@ -17,7 +17,7 @@ jobs:
         architecture: 'x64'
     - name: Install dependencies
       shell: pwsh
-      working-directory: Client/Windows  # Move here to match requirements.txt location
+      working-directory: Client/Windows
       run: |
         Write-Host "Installing dependencies..."
         python -m pip install --upgrade pip
@@ -34,8 +34,20 @@ jobs:
         # Verify pywin32 attributes
         python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG'))" | Out-File pywin32_check.txt -Append
         python -c "import win32ts, win32con; print('WM_WTSSESSION_CHANGE:', hasattr(win32con, 'WM_WTSSESSION_CHANGE'))" | Out-File win32ts_check.txt -Append
-        # Check pywin32 DLLs
-        dir $env:LOCALAPPDATA\Programs\Python\Python312\Lib\site-packages\pywin32_system32 | Out-File dll_check.txt
+        # Check pywin32 DLLs in hosted tool cache
+        $pywin32_dll_path = "$env:RUNNER_TOOL_CACHE\Python\3.12.9\x64\Lib\site-packages\pywin32_system32"
+        if (Test-Path $pywin32_dll_path) {
+            dir $pywin32_dll_path | Out-File dll_check.txt
+        } else {
+            Write-Host "pywin32_system32 not found in expected hosted tool cache path, checking alternate location..."
+            $alt_path = (python -c "import site; print(site.getsitepackages()[0])" | Out-String).Trim() + "\pywin32_system32"
+            if (Test-Path $alt_path) {
+                dir $alt_path | Out-File dll_check.txt
+            } else {
+                Write-Host "No pywin32_system32 directory found; DLLs may be elsewhere or missing."
+                "No pywin32_system32 directory found" | Out-File dll_check.txt
+            }
+        }
     - name: Build executables
       shell: pwsh
       working-directory: Client/Windows
@@ -64,4 +76,32 @@ jobs:
         Write-Host "Copying files to root for flat zip..."
         Copy-Item "Client/Windows/dist/PowerMonitor.exe" "./" -Force -ErrorAction Stop
         Copy-Item "Client/Windows/dist/AttendanceTracker.exe" "./" -Force -ErrorAction Stop
-        Copy-Item "Client/Windows/config
+        Copy-Item "Client/Windows/config.json" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/test_install.bat" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/uninstall.bat" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/start.bat" "./" -Force -ErrorAction Stop
+        Write-Host "Package contents:"
+        Get-ChildItem | Where-Object { $_.Name -in "PowerMonitor.exe", "AttendanceTracker.exe", "config.json", "test_install.bat", "uninstall.bat", "start.bat" } | Format-Table Name, Length
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: AttendanceTracker-Windows-x64
+        path: |
+          PowerMonitor.exe
+          AttendanceTracker.exe
+          config.json
+          test_install.bat
+          uninstall.bat
+          start.bat
+    - name: Upload diagnostic logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Diagnostics
+        path: |
+          Client/Windows/pip_list.txt
+          Client/Windows/pywin32_check.txt
+          Client/Windows/win32ts_check.txt
+          Client/Windows/dll_check.txt
+          Client/Windows/pyinstaller_log.txt
+          Client/Windows/pyinstaller_attendance_log.txt
