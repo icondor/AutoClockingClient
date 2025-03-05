@@ -32,9 +32,9 @@ jobs:
         }
         # Ensure pywin32 is fully initialized
         python -m pip install pywin32 --force-reinstall
-        python -m win32com  # Trigger post-install setup
+        python "$env:RUNNER_TOOL_CACHE\Python\3.12.9\x64\Scripts\pywin32_postinstall.py" -install
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to initialize pywin32"
+            Write-Error "Failed to run pywin32_postinstall.py"
             exit 1
         }
         pip list | Out-File pip_list.txt
