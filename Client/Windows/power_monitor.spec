@@ -31,10 +31,13 @@ if os.path.exists(pywin32_dir):
 else:
     print("Warning: pywin32_system32 not found locally; CI should handle it")
 
-# Collect all possible dependencies
+# Collect all possible dependencies for the listed modules
 for mod in ['win32gui', 'win32ts', 'win32con', 'win32api', 'win32event', 'pywintypes', 'pythoncom', 'win32process']:
     a.binaries += collect_dynamic_libs(mod, destdir='.')
     a.datas += collect_data_files(mod)
+
+# Collect data files for win32gui_struct once, outside the loop
+a.datas += collect_data_files('win32gui_struct')
 
 pyz = PYZ(a.pure)
 

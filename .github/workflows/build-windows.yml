@@ -44,8 +44,13 @@ jobs:
             Write-Error "Failed to load pywin32 modules"
             exit 1
         }
+        # Diagnostic check for win32gui.MSG
+        python -c "import win32gui; print('MSG available:', hasattr(win32gui, 'MSG'))" | Out-File pywin32_msg_check.txt -Append
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to check win32gui.MSG"
+            exit 1
+        }
         pip list | Out-File pip_list.txt
-        python -c "import win32gui; print('MSG:', hasattr(win32gui, 'MSG'))" | Out-File pywin32_check.txt -Append
         python -c "import win32ts, win32con; print('WM_WTSSESSION_CHANGE:', hasattr(win32con, 'WM_WTSSESSION_CHANGE')); print('WTS constants:', [x for x in dir(win32ts) if x.startswith('WTS_')])" | Out-File win32ts_check.txt -Append
         $pywin32_dll_path = "$env:RUNNER_TOOL_CACHE\Python\3.12.9\x64\Lib\site-packages\pywin32_system32"
         if (Test-Path $pywin32_dll_path) {
@@ -111,7 +116,7 @@ jobs:
         name: Build-Diagnostics
         path: |
           Client/Windows/pip_list.txt
-          Client/Windows/pywin32_check.txt
+          Client/Windows/pywin32_msg_check.txt
           Client/Windows/win32ts_check.txt
           Client/Windows/dll_check.txt
           Client/Windows/pyinstaller_log.txt
