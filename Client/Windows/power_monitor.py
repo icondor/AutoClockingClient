@@ -10,7 +10,8 @@ import win32con
 import win32event
 import winerror
 import ctypes
-from logging import RotatingFileHandler
+from logging.handlers import RotatingFileHandler
+
 import configparser  # Added for reading INI file
 
 try:
