@@ -186,7 +186,7 @@ def run_message_loop(hWnd):
         
         msg = win32gui.MSG()
         while True:
-            result = win32gui.GetMessage(msg, hWnd, 0, 0)
+            result = win32gui.GetMessage(msg, hWnd, 0)
             if result == 0:
                 logging.info("Received WM_QUIT, exiting message loop")
                 break
