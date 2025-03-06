@@ -9,7 +9,7 @@ import win32api
 import win32con
 import win32event
 import winerror
-import ctypes  # Added for manual MSG definition
+import ctypes  # For direct Windows API calls
 
 try:
     import win32ts
@@ -25,12 +25,12 @@ app_support = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker')
 logs_dir = os.path.join(app_support, 'logs')
 os.makedirs(logs_dir, exist_ok=True)
 
-power_monitor_log = os.path.join(logs_dir, 'powermonitor.log')  # Renamed for consistency
+power_monitor_log = os.path.join(logs_dir, 'powermonitor.log')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.FileHandler(power_monitor_log)]  # Log only to file
+    handlers=[logging.FileHandler(power_monitor_log)]
 )
 
 # Import Windows modules with proper error handling
@@ -63,21 +63,31 @@ except ImportError:
     HAS_WIN32PROCESS = False
     logging.warning("win32process module not available - using alternative process check")
 
-# Manual definition of MSG if not available in win32gui
-if not hasattr(win32gui, 'MSG'):
-    class MSG(ctypes.Structure):
-        _fields_ = [
-            ('hwnd', ctypes.c_void_p),
-            ('message', ctypes.c_uint),
-            ('wParam', ctypes.c_void_p),
-            ('lParam', ctypes.c_void_p),
-            ('time', ctypes.c_ulong),
-            ('pt', ctypes.c_void_p),
-        ]
-    win32gui.MSG = MSG
-    logging.info("Manually defined win32gui.MSG using ctypes")
-else:
-    logging.info("Using existing win32gui.MSG from pywin32")
+# Define MSG structure with ctypes since win32gui.MSG is unavailable
+class MSG(ctypes.Structure):
+    _fields_ = [
+        ('hwnd', ctypes.c_void_p),
+        ('message', ctypes.c_uint),
+        ('wParam', ctypes.c_void_p),
+        ('lParam', ctypes.c_void_p),
+        ('time', ctypes.c_ulong),
+        ('pt', ctypes.c_void_p),
+    ]
+logging.info("Defined MSG structure using ctypes since win32gui.MSG is unavailable")
+
+# Access Windows API functions directly via ctypes
+user32 = ctypes.windll.user32
+GetMessageW = user32.GetMessageW
+TranslateMessage = user32.TranslateMessage
+DispatchMessageW = user32.DispatchMessageW
+
+# Set argument and return types for clarity
+GetMessageW.argtypes = [ctypes.POINTER(MSG), ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
+GetMessageW.restype = ctypes.c_int
+TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
+TranslateMessage.restype = ctypes.c_int
+DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
+DispatchMessageW.restype = ctypes.c_void_p
 
 def is_process_running(process_name):
     """Check if a process is already running."""
@@ -153,8 +163,8 @@ class PowerMonitor:
                 return False
             process = subprocess.Popen(
                 [app_path],
-                stdout=subprocess.DEVNULL,  # Discard stdout
-                stderr=subprocess.DEVNULL,  # Discard stderr
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 cwd=self.app_support,
                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.SW_HIDE,
                 startupinfo=subprocess.STARTUPINFO(dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=subprocess.SW_HIDE)
@@ -184,17 +194,17 @@ def run_message_loop(hWnd):
                 session_notifications_registered = True
                 logging.info("Successfully registered for session notifications")
         
-        msg = win32gui.MSG()
+        msg = MSG()  # Use our ctypes MSG directly
         while True:
-            result = win32gui.GetMessage(ctypes.byref(msg), hWnd, 0)  # Fixed with byref
+            result = GetMessageW(ctypes.byref(msg), hWnd, 0, 0)  # Direct Windows API call
             if result == 0:
                 logging.info("Received WM_QUIT, exiting message loop")
                 break
             elif result == -1:
-                logging.error("Error in GetMessage")
+                logging.error("Error in GetMessageW")
                 break
-            win32gui.TranslateMessage(ctypes.byref(msg))  # Fixed with byref
-            win32gui.DispatchMessage(ctypes.byref(msg))  # Fixed with byref
+            TranslateMessage(ctypes.byref(msg))
+            DispatchMessageW(ctypes.byref(msg))
         return True
     except Exception as e:
         logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
