@@ -186,15 +186,15 @@ def run_message_loop(hWnd):
         
         msg = win32gui.MSG()
         while True:
-            result = win32gui.GetMessage(msg, hWnd, 0)
+            result = win32gui.GetMessage(ctypes.byref(msg), hWnd, 0)  # Fixed with byref
             if result == 0:
                 logging.info("Received WM_QUIT, exiting message loop")
                 break
             elif result == -1:
                 logging.error("Error in GetMessage")
                 break
-            win32gui.TranslateMessage(msg)
-            win32gui.DispatchMessage(msg)
+            win32gui.TranslateMessage(ctypes.byref(msg))  # Fixed with byref
+            win32gui.DispatchMessage(ctypes.byref(msg))  # Fixed with byref
         return True
     except Exception as e:
         logging.error(f"Error in message loop: {e}\n{traceback.format_exc()}")
