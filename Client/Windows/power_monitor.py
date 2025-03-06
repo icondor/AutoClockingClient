@@ -16,7 +16,7 @@ try:
     HAS_WIN32TS = True
 except ImportError:
     HAS_WIN32TS = False
-    logging.warning("win32ts module not available - session notifications will be disabled")
+    logging.warning("win32ts module not available - session notifications disabled")
 
 WM_WTSSESSION_CHANGE_FALLBACK = 0x02B1
 
@@ -28,7 +28,7 @@ os.makedirs(logs_dir, exist_ok=True)
 power_monitor_log = os.path.join(logs_dir, 'powermonitor.log')
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Capture all messages
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[logging.FileHandler(power_monitor_log)]
 )
@@ -81,7 +81,7 @@ GetMessageW = user32.GetMessageW
 TranslateMessage = user32.TranslateMessage
 DispatchMessageW = user32.DispatchMessageW
 
-# Set argument and return types for clarity
+# Set argument and return types
 GetMessageW.argtypes = [ctypes.POINTER(MSG), ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
 GetMessageW.restype = ctypes.c_int
 TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
@@ -90,7 +90,6 @@ DispatchMessageW.argtypes = [ctypes.POINTER(MSG)]
 DispatchMessageW.restype = ctypes.c_void_p
 
 def is_process_running(process_name):
-    """Check if a process is already running."""
     try:
         result = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {process_name}'], 
                               capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -193,16 +192,24 @@ def run_message_loop(hWnd):
             if win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION):
                 session_notifications_registered = True
                 logging.info("Successfully registered for session notifications")
+            else:
+                logging.warning("Failed to register for session notifications")
         
-        msg = MSG()  # Use our ctypes MSG directly
+        msg = MSG()
+        logging.info("Starting message loop")
+        iteration = 0
         while True:
-            result = GetMessageW(ctypes.byref(msg), hWnd, 0, 0)  # Direct Windows API call
+            iteration += 1
+            logging.debug(f"Message loop iteration {iteration}")
+            result = GetMessageW(ctypes.byref(msg), hWnd, 0, 0)
             if result == 0:
                 logging.info("Received WM_QUIT, exiting message loop")
                 break
             elif result == -1:
-                logging.error("Error in GetMessageW")
+                error = ctypes.get_last_error()
+                logging.error(f"Error in GetMessageW: {error}")
                 break
+            logging.info(f"Received message: hwnd={msg.hwnd}, message={msg.message}, wParam={msg.wParam}, lParam={msg.lParam}")
             TranslateMessage(ctypes.byref(msg))
             DispatchMessageW(ctypes.byref(msg))
         return True
