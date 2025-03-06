@@ -10,6 +10,8 @@ import win32con
 import win32event
 import winerror
 import ctypes
+from logging import RotatingFileHandler
+import configparser  # Added for reading INI file
 
 try:
     import win32ts
@@ -28,18 +30,43 @@ PBT_APMRESUMEAUTOMATIC_FALLBACK = 0x12  # Added for wake from sleep
 PBT_APMRESUMESUSPEND_FALLBACK = 0x4    # Added for user-triggered wake
 PBT_APMSUSPEND_FALLBACK = 0x4          # Added for sleep (note: overlaps with RESUMESUSPEND, but typically 0x4)
 
-# Configure logging
+# Configure logging with RotatingFileHandler from config file
 app_support = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker')
 logs_dir = os.path.join(app_support, 'logs')
 os.makedirs(logs_dir, exist_ok=True)
 
 power_monitor_log = os.path.join(logs_dir, 'powermonitor.log')
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.FileHandler(power_monitor_log)]
-)
+# Get the root logger and clear any existing handlers
+logger = logging.getLogger()
+for handler in logger.handlers:
+    logger.removeHandler(handler)
+
+# Load logging configuration from file
+config_file = os.path.join(os.path.dirname(sys.executable), 'logging.conf')
+config = configparser.ConfigParser()
+
+# Default settings if config file is missing or invalid
+log_level = 'DEBUG'
+max_bytes = 10 * 1024 * 1024  # 10 MB
+
+if os.path.exists(config_file):
+    try:
+        config.read(config_file)
+        if 'logging' in config:
+            log_level = config['logging'].get('level', 'DEBUG').upper()
+            max_bytes = config['logging'].getint('max_size_mb', 10) * 1024 * 1024
+    except Exception as e:
+        logging.basicConfig(level=logging.ERROR)  # Temporary setup for error logging
+        logging.error(f"Failed to read logging config from {config_file}: {e}")
+
+# Set up RotatingFileHandler with settings from config or defaults
+handler = RotatingFileHandler(power_monitor_log, mode='w', maxBytes=max_bytes, backupCount=0)
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+level = getattr(logging, log_level, logging.DEBUG)  # Fallback to DEBUG if invalid
+logger.setLevel(level)
+handler.setLevel(level)
+logger.addHandler(handler)
 
 # Import Windows modules
 required_modules = {

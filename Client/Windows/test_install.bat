@@ -70,6 +70,7 @@ if not exist "%CURRENT_DIR%config.json" (
     exit /b 1
 )
 
+
 xcopy /Y /F "%CURRENT_DIR%AttendanceTracker.exe" "%APP_SUPPORT%\" >>"%LOG_FILE%" 2>&1
 if not exist "%APP_SUPPORT%\AttendanceTracker.exe" (
     echo Error: Failed to copy AttendanceTracker.exe
@@ -91,6 +92,12 @@ if not exist "%APP_SUPPORT%\config.json" (
     exit /b 1
 )
 
+xcopy /Y /F "%CURRENT_DIR%logging.conf" "%APP_SUPPORT%\" >>"%LOG_FILE%" 2>&1
+if not exist "%APP_SUPPORT%\logging.conf" (
+    echo Error: Failed to copy logging.conf
+    echo Error: Failed to copy logging.conf >> "%LOG_FILE%"
+    exit /b 1
+)
 :: Create startup entry
 echo Creating startup entry...
 set "STARTUP_SCRIPT=%STARTUP_DIR%\AttendanceTracker_PowerMonitor.bat"

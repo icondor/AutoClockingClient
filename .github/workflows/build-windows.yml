@@ -96,8 +96,9 @@ jobs:
         Copy-Item "Client/Windows/test_install.bat" "./" -Force -ErrorAction Stop
         Copy-Item "Client/Windows/uninstall.bat" "./" -Force -ErrorAction Stop
         Copy-Item "Client/Windows/start.bat" "./" -Force -ErrorAction Stop
+        Copy-Item "Client/Windows/logging.conf" "./" -Force -ErrorAction Stop
         Write-Host "Package contents:"
-        Get-ChildItem | Where-Object { $_.Name -in "PowerMonitor.exe", "AttendanceTracker.exe", "config.json", "test_install.bat", "uninstall.bat", "start.bat" } | Format-Table Name, Length
+        Get-ChildItem | Where-Object { $_.Name -in "PowerMonitor.exe", "AttendanceTracker.exe", "config.json", "test_install.bat", "uninstall.bat", "start.bat", "logging.conf" } | Format-Table Name, Length
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -109,6 +110,7 @@ jobs:
           test_install.bat
           uninstall.bat
           start.bat
+          logging.conf
     - name: Upload diagnostic logs
       if: always()
       uses: actions/upload-artifact@v4
