@@ -9,7 +9,7 @@ import win32api
 import win32con
 import win32event
 import winerror
-import ctypes  # For direct Windows API calls
+import ctypes
 
 try:
     import win32ts
@@ -18,9 +18,17 @@ except ImportError:
     HAS_WIN32TS = False
     logging.warning("win32ts module not available - session notifications disabled")
 
+# Define fallback constants
 WM_WTSSESSION_CHANGE_FALLBACK = 0x02B1
+WTS_SESSION_UNLOCK_FALLBACK = 0x8
+WTS_SESSION_LOGON_FALLBACK = 0x5
+WTS_SESSION_LOGOFF_FALLBACK = 0x6
+WTS_SESSION_LOCK_FALLBACK = 0x7
+PBT_APMRESUMEAUTOMATIC_FALLBACK = 0x12  # Added for wake from sleep
+PBT_APMRESUMESUSPEND_FALLBACK = 0x4    # Added for user-triggered wake
+PBT_APMSUSPEND_FALLBACK = 0x4          # Added for sleep (note: overlaps with RESUMESUSPEND, but typically 0x4)
 
-# Configure logging for PowerMonitor
+# Configure logging
 app_support = os.path.join(os.environ.get('APPDATA', ''), 'AttendanceTracker')
 logs_dir = os.path.join(app_support, 'logs')
 os.makedirs(logs_dir, exist_ok=True)
@@ -28,12 +36,12 @@ os.makedirs(logs_dir, exist_ok=True)
 power_monitor_log = os.path.join(logs_dir, 'powermonitor.log')
 
 logging.basicConfig(
-    level=logging.DEBUG,  # Capture all messages
+    level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[logging.FileHandler(power_monitor_log)]
 )
 
-# Import Windows modules with proper error handling
+# Import Windows modules
 required_modules = {
     'win32api': None,
     'win32con': None,
@@ -63,7 +71,7 @@ except ImportError:
     HAS_WIN32PROCESS = False
     logging.warning("win32process module not available - using alternative process check")
 
-# Define MSG structure with ctypes since win32gui.MSG is unavailable
+# Define MSG structure with ctypes
 class MSG(ctypes.Structure):
     _fields_ = [
         ('hwnd', ctypes.c_void_p),
@@ -75,13 +83,12 @@ class MSG(ctypes.Structure):
     ]
 logging.info("Defined MSG structure using ctypes since win32gui.MSG is unavailable")
 
-# Access Windows API functions directly via ctypes
+# Access Windows API functions via ctypes
 user32 = ctypes.windll.user32
 GetMessageW = user32.GetMessageW
 TranslateMessage = user32.TranslateMessage
 DispatchMessageW = user32.DispatchMessageW
 
-# Set argument and return types
 GetMessageW.argtypes = [ctypes.POINTER(MSG), ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
 GetMessageW.restype = ctypes.c_int
 TranslateMessage.argtypes = [ctypes.POINTER(MSG)]
@@ -188,15 +195,17 @@ class PowerMonitor:
 def run_message_loop(hWnd):
     session_notifications_registered = False
     try:
+        msg = MSG()
+        logging.info("Starting message loop")
         if HAS_WIN32TS:
+            logging.info(f"Attempting to register session notifications for hWnd={hWnd}")
             if win32ts.WTSRegisterSessionNotification(hWnd, win32ts.NOTIFY_FOR_THIS_SESSION):
                 session_notifications_registered = True
                 logging.info("Successfully registered for session notifications")
             else:
-                logging.warning("Failed to register for session notifications")
+                error = ctypes.get_last_error()
+                logging.warning(f"Failed to register for session notifications, error: {error}")
         
-        msg = MSG()
-        logging.info("Starting message loop")
         iteration = 0
         while True:
             iteration += 1
@@ -231,35 +240,48 @@ def WndProc(hWnd, msg, wParam, lParam):
             return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
         if msg == win32con.WM_POWERBROADCAST:
             logging.info(f"Received power event: wParam={wParam}")
-            if wParam == win32con.PBT_APMRESUMEAUTOMATIC:
-                logging.info("System resuming from suspend")
+            # Use fallbacks for power events
+            pbt_apmresumeautomatic = getattr(win32con, 'PBT_APMRESUMEAUTOMATIC', PBT_APMRESUMEAUTOMATIC_FALLBACK)
+            pbt_apmresumesuspend = getattr(win32con, 'PBT_APMRESUMESUSPEND', PBT_APMRESUMESUSPEND_FALLBACK)
+            pbt_apmsuspend = getattr(win32con, 'PBT_APMSUSPEND', PBT_APMSUSPEND_FALLBACK)
+            if wParam == pbt_apmresumeautomatic:
+                logging.info("System resuming from suspend (automatic)")
                 if monitor.handleEvent("wake"):
                     return True
-            elif wParam == win32con.PBT_APMRESUMESUSPEND:
+            elif wParam == pbt_apmresumesuspend:
                 logging.info("System resuming from suspend (user triggered)")
                 if monitor.handleEvent("wake"):
                     return True
-            elif wParam == win32con.PBT_APMSUSPEND:
+            elif wParam == pbt_apmsuspend:
                 logging.info("System going to suspend")
                 return True
+            else:
+                logging.info(f"Unhandled power event: wParam={wParam}")
         elif HAS_WIN32TS:
             session_change_msg = getattr(win32con, 'WM_WTSSESSION_CHANGE', WM_WTSSESSION_CHANGE_FALLBACK)
             if msg == session_change_msg:
                 logging.info(f"Received session event: wParam={wParam}")
-                if wParam == win32con.WTS_SESSION_UNLOCK:
+                # Use fallbacks for session events
+                wts_session_unlock = getattr(win32con, 'WTS_SESSION_UNLOCK', WTS_SESSION_UNLOCK_FALLBACK)
+                wts_session_logon = getattr(win32con, 'WTS_SESSION_LOGON', WTS_SESSION_LOGON_FALLBACK)
+                wts_session_logoff = getattr(win32con, 'WTS_SESSION_LOGOFF', WTS_SESSION_LOGOFF_FALLBACK)
+                wts_session_lock = getattr(win32con, 'WTS_SESSION_LOCK', WTS_SESSION_LOCK_FALLBACK)
+                if wParam == wts_session_unlock:
                     logging.info("Session unlocked")
                     if monitor.handleEvent("unlock"):
                         return True
-                elif wParam == win32con.WTS_SESSION_LOGON:
+                elif wParam == wts_session_logon:
                     logging.info("User logged on")
                     if monitor.handleEvent("logon"):
                         return True
-                elif wParam == win32con.WTS_SESSION_LOGOFF:
+                elif wParam == wts_session_logoff:
                     logging.info("User logged off")
                     return True
-                elif wParam == win32con.WTS_SESSION_LOCK:
+                elif wParam == wts_session_lock:
                     logging.info("Session locked")
                     return True
+                else:
+                    logging.info(f"Unhandled session event: wParam={wParam}")
         elif msg == win32con.WM_QUERYENDSESSION:
             logging.info("System shutdown/restart/logoff requested")
             return True
@@ -298,8 +320,9 @@ def create_window():
         if not hWnd:
             logging.error("CreateWindow returned NULL")
             return None
+        logging.info(f"Window created with hWnd={hWnd}")
         win32gui.SendMessage(hWnd, win32con.WM_POWERBROADCAST, 
-                           win32con.PBT_APMRESUMEAUTOMATIC, 0)
+                           getattr(win32con, 'PBT_APMRESUMEAUTOMATIC', PBT_APMRESUMEAUTOMATIC_FALLBACK), 0)
         return hWnd
     except Exception as e:
         logging.error(f"Error in create_window: {e}\n{traceback.format_exc()}")
