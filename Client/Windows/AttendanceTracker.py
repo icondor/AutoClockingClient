@@ -7,20 +7,49 @@ import os
 import sys
 import logging
 import uuid
+from logging.handlers import RotatingFileHandler
+import configparser  # Added for reading INI file
 
 # Setup paths
 APP_SUPPORT = os.path.join(os.environ['APPDATA'], 'AttendanceTracker')
 LOG_DIR = os.path.join(APP_SUPPORT, 'Logs')
 os.makedirs(LOG_DIR, exist_ok=True)  # Ensure log directory exists
 
-# Setup logging
-logging.basicConfig(
-    filename=os.path.join(LOG_DIR, 'attendancetracker.log'),
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] AttendanceTracker: %(message)s'
-)
-logger = logging.getLogger('AttendanceTracker')
+# Configure logging with RotatingFileHandler from config file
+power_monitor_log = os.path.join(LOG_DIR, 'attendancetracker.log')
 
+# Get the root logger and clear any existing handlers
+logger = logging.getLogger()
+for handler in logger.handlers[:]:  # Use a copy to avoid modifying list during iteration
+    logger.removeHandler(handler)
+
+# Load logging configuration from file
+config_file = os.path.join(os.path.dirname(sys.executable), 'logging.conf')
+config = configparser.ConfigParser()
+
+# Default settings if config file is missing or invalid
+log_level = 'INFO'  # Changed to INFO to match your original intent
+max_bytes = 10 * 1024 * 1024  # 10 MB
+
+if os.path.exists(config_file):
+    try:
+        config.read(config_file)
+        if 'logging' in config:
+            log_level = config['logging'].get('level', 'INFO').upper()
+            max_bytes = config['logging'].getint('max_size_mb', 10) * 1024 * 1024
+    except Exception as e:
+        logging.basicConfig(level=logging.ERROR)  # Temporary setup for error logging
+        logging.error(f"Failed to read logging config from {config_file}: {e}")
+
+# Set up RotatingFileHandler with settings from config or defaults
+handler = RotatingFileHandler(power_monitor_log, mode='w', maxBytes=max_bytes, backupCount=0)
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] AttendanceTracker: %(message)s'))
+level = getattr(logging, log_level, logging.INFO)  # Fallback to INFO if invalid
+logger.setLevel(level)
+handler.setLevel(level)
+logger.addHandler(handler)
+
+# Rest of the code remains unchanged...
 def get_config():
     config_path = os.path.join(APP_SUPPORT, 'config.json')
     try:
@@ -30,7 +59,6 @@ def get_config():
         logger.error(f"Error reading config: {str(e)}")
         sys.exit(1)
 
-# Rest of the code remains unchanged...
 def get_hostname():
     hostname = socket.gethostname()
     return hostname.split('.')[0]
@@ -72,12 +100,10 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
             if response.status_code == 200:
                 logger.info(f"Success: Server accepted check-in at {datetime.now()}")
                 save_success_date()
-                logger.handlers[0].flush()
                 sys.exit(0)
             elif response.status_code == 208:
                 logger.info(f"Server telling me that already checked in today at {datetime.now()}")
                 save_success_date()
-                logger.handlers[0].flush()
                 sys.exit(0)
             else:
                 logger.error(f"Unexpected response: {response.status_code}")
@@ -123,7 +149,6 @@ def main():
         today = datetime.now().strftime('%Y-%m-%d')
         if last_date == today:
             logger.info(f"I found that I already checked in today at {datetime.now()}")
-            logger.handlers[0].flush()
             sys.exit(0)
         
         if try_connect_with_retry(config):
