@@ -1,6 +1,6 @@
 {
     "server": {
-        "url": "http://CLJSDEICONDOR04:3000",
+        "url": "http://cljsdeicondor04.local:3001",
         "timeout_seconds": 5,
         "max_retry_attempts": 10,
         "retry_delay_seconds": 60

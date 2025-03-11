@@ -8,28 +8,24 @@ import sys
 import logging
 import uuid
 from logging.handlers import RotatingFileHandler
-import configparser  # Added for reading INI file
+import configparser
+from urllib.parse import urlparse
 
 # Setup paths
 APP_SUPPORT = os.path.join(os.environ['APPDATA'], 'AttendanceTracker')
 LOG_DIR = os.path.join(APP_SUPPORT, 'Logs')
-os.makedirs(LOG_DIR, exist_ok=True)  # Ensure log directory exists
+os.makedirs(LOG_DIR, exist_ok=True)
 
-# Configure logging with RotatingFileHandler from config file
+# Configure logging
 power_monitor_log = os.path.join(LOG_DIR, 'attendancetracker.log')
-
-# Get the root logger and clear any existing handlers
 logger = logging.getLogger()
-for handler in logger.handlers[:]:  # Use a copy to avoid modifying list during iteration
+for handler in logger.handlers[:]:
     logger.removeHandler(handler)
 
-# Load logging configuration from file
 config_file = os.path.join(os.path.dirname(sys.executable), 'logging.conf')
 config = configparser.ConfigParser()
-
-# Default settings if config file is missing or invalid
-log_level = 'INFO'  # Changed to INFO to match your original intent
-max_bytes = 10 * 1024 * 1024  # 10 MB
+log_level = 'INFO'
+max_bytes = 10 * 1024 * 1024
 
 if os.path.exists(config_file):
     try:
@@ -38,18 +34,36 @@ if os.path.exists(config_file):
             log_level = config['logging'].get('level', 'INFO').upper()
             max_bytes = config['logging'].getint('max_size_mb', 10) * 1024 * 1024
     except Exception as e:
-        logging.basicConfig(level=logging.ERROR)  # Temporary setup for error logging
+        logging.basicConfig(level=logging.ERROR)
         logging.error(f"Failed to read logging config from {config_file}: {e}")
 
-# Set up RotatingFileHandler with settings from config or defaults
 handler = RotatingFileHandler(power_monitor_log, mode='w', maxBytes=max_bytes, backupCount=0)
 handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] AttendanceTracker: %(message)s'))
-level = getattr(logging, log_level, logging.INFO)  # Fallback to INFO if invalid
+level = getattr(logging, log_level, logging.INFO)
 logger.setLevel(level)
 handler.setLevel(level)
 logger.addHandler(handler)
 
-# Rest of the code remains unchanged...
+# Resolve address with IPv4 preference, fallback to IPv6
+def get_ip_address(host, port):
+    try:
+        # First try IPv4
+        addrinfo = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        ip = addrinfo[0][4][0]
+        logger.info(f"Resolved {host} to IPv4: {ip}")
+        return ip, socket.AF_INET
+    except socket.gaierror as e:
+        logger.warning(f"IPv4 resolution failed for {host}: {str(e)}. Trying IPv6...")
+        try:
+            # Fallback to IPv6
+            addrinfo = socket.getaddrinfo(host, port, socket.AF_INET6, socket.SOCK_STREAM)
+            ip = addrinfo[0][4][0]
+            logger.info(f"Resolved {host} to IPv6: {ip}")
+            return f"[{ip}]", socket.AF_INET6
+        except socket.gaierror as e2:
+            logger.error(f"IPv6 resolution failed for {host}: {str(e2)}")
+            raise
+
 def get_config():
     config_path = os.path.join(APP_SUPPORT, 'config.json')
     try:
@@ -66,9 +80,8 @@ def get_hostname():
 def validate_server_config(config):
     if not config['server']['url'].startswith('https://'):
         logger.warning("Using insecure HTTP connection")
-    
     try:
-        socket.gethostbyname(config['server']['url'].split('://')[1].split(':')[0])
+        socket.gethostbyname(config['server']['url'].split('://')[1].split(':')[0].split('/')[0])
     except:
         logger.error("Cannot resolve server hostname")
         return False
@@ -78,7 +91,8 @@ def get_machine_id():
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, socket.gethostname()))
 
 def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
-    url = config['server']['url'] + '/checkin'
+    base_url = config['server']['url'].split('/checkin')[0] if config['server']['url'].endswith('/checkin') else config['server']['url']
+    url = f"{base_url}/checkin"
     hostname = get_hostname()
     
     logger.info(f"Starting connection attempts with hostname: {hostname}")
@@ -90,10 +104,15 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
     
     for attempt in range(max_attempts):
         try:
+            parsed = urlparse(base_url)
+            host = parsed.hostname
+            port = parsed.port or 3001
+            ip, family = get_ip_address(host, port)
+            new_url = f"{parsed.scheme}://{ip}:{port}/checkin"
+            logger.info(f"Attempt {attempt + 1}/{max_attempts}: Sending request to {new_url}")
             client_time = datetime.now()
-            logger.info(f"Attempt {attempt + 1}/{max_attempts}: Sending request...")
             logger.info(f"Request data: hostname={hostname}, time={client_time.isoformat()}")
-            response = requests.post(url, 
+            response = requests.post(new_url,
                                     json={"hostname": hostname, "client_time": client_time.isoformat()},
                                     timeout=config['server']['timeout_seconds'])
             
@@ -102,7 +121,7 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
                 save_success_date()
                 sys.exit(0)
             elif response.status_code == 208:
-                logger.info(f"Server telling me that already checked in today at {datetime.now()}")
+                logger.info(f"Server already checked in today at {datetime.now()}")
                 save_success_date()
                 sys.exit(0)
             else:
@@ -143,12 +162,12 @@ def main():
     try:
         config = get_config()
         logger.info("Config loaded, checking last success date")
-        time.sleep(config['application']['startup_delay_seconds'])
+        time.sleep(config['application'].get('startup_delay_seconds', 0))
         
         last_date = get_last_success_date()
         today = datetime.now().strftime('%Y-%m-%d')
         if last_date == today:
-            logger.info(f"I found that I already checked in today at {datetime.now()}")
+            logger.info(f"Already checked in today at {datetime.now()}")
             sys.exit(0)
         
         if try_connect_with_retry(config):
