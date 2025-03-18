@@ -101,7 +101,7 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
     
     max_attempts = max_attempts or config['server'].get('max_retry_attempts', 10)
     delay_seconds = delay_seconds or config['server'].get('retry_delay_seconds', 60)
-    
+    version = config.get('version', '1.0.0')  
     for attempt in range(max_attempts):
         try:
             parsed = urlparse(base_url)
@@ -113,7 +113,7 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
             client_time = datetime.now()
             logger.info(f"Request data: hostname={hostname}, time={client_time.isoformat()}")
             response = requests.post(new_url,
-                                    json={"hostname": hostname, "client_time": client_time.isoformat()},
+                                    json={"hostname": hostname, "client_time": client_time.isoformat(), "version": version},
                                     timeout=config['server']['timeout_seconds'])
             
             if response.status_code == 200:

@@ -70,7 +70,7 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
     
     max_attempts = max_attempts or config['server'].get('max_retry_attempts', 10)
     delay_seconds = delay_seconds or config['server'].get('retry_delay_seconds', 60)
-    
+    version = config.get('version', '1.0.0')  # Default to 1.0.0 if not specif
     for attempt in range(max_attempts):
         try:
             client_time = datetime.now()
@@ -79,7 +79,8 @@ def try_connect_with_retry(config, max_attempts=None, delay_seconds=None):
             response = requests.post(url, 
                                     json={
                                         "hostname": hostname,
-                                        "client_time": client_time.isoformat()
+                                        "client_time": client_time.isoformat(),
+                                        "version": version
                                     },
                                     timeout=config['server']['timeout_seconds'])
             
