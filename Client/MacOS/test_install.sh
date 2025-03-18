@@ -128,16 +128,16 @@ log "Logs will be available at: ${APP_SUPPORT_DIR}/error.log and output.log"
 
 log "Installation completed successfully!"
 
-# Start PowerMonitor right away
+# Start PowerMonitor
 log "Starting PowerMonitor..."
-open "${POWERMONITOR_APP}" || { log "❌ Failed to start PowerMonitor"; exit 1; }
+"${APP_SUPPORT_DIR}/power_monitor" &
 
-# Give it a moment to start
+# Wait briefly to ensure it starts
 sleep 2
 
 # Verify it's running
 if pgrep -f power_monitor > /dev/null; then
-    log "✅ PowerMonitor is now running"
+    log "${GREEN}✅ PowerMonitor started successfully${NC}"
 else
-    log "⚠️ PowerMonitor didn't start automatically. It will start on next login."
+    log "${RED}❌ Failed to start PowerMonitor${NC}"
 fi

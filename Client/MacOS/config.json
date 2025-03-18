@@ -1,6 +1,6 @@
 {
     "server": {
-        "url": "http://CLJSDEICONDOR04.local:3001",
+        "url": "http://clj-devmantools01.global.sdl.corp:3001",
         "timeout_seconds": 30,
         "max_retry_attempts": 10,
         "retry_delay_seconds": 60
