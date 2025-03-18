@@ -76,6 +76,7 @@ cp Client/MacOS/test_install.sh dist/package/ || { echo "❌ Failed to copy inst
 cp Client/MacOS/start.command dist/package/ || { echo "❌ Failed to copy start command"; exit 1; }
 cp Client/MacOS/uninstall.sh dist/package/ || { echo "❌ Failed to copy uninstall script"; exit 1; }
 cp Client/MacOS/uninstall.command dist/package/ || { echo "❌ Failed to copy uninstall command"; exit 1; }
+cp Client/MacOS/logging.conf dist/package/ || { echo "❌ Failed to copy logging.conf"; exit 1; }
 
 # Make scripts executable
 chmod +x dist/package/start.command dist/package/test_install.sh dist/package/uninstall.sh dist/package/uninstall.command dist/package/power_monitor

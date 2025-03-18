@@ -22,14 +22,11 @@ log() {
 # Application directories
 APP_SUPPORT_DIR="${HOME}/Library/Application Support/AttendanceTracker"
 LAUNCH_AGENTS_DIR="${HOME}/Library/LaunchAgents"
-SCRIPTS_DIR="${APP_SUPPORT_DIR}/scripts"
 
-# Create necessary directories
-mkdir -p "${APP_SUPPORT_DIR}" "${SCRIPTS_DIR}"
 
-# Create log files
-touch "${APP_SUPPORT_DIR}/error.log" "${APP_SUPPORT_DIR}/output.log"
-chmod 644 "${APP_SUPPORT_DIR}/error.log" "${APP_SUPPORT_DIR}/output.log"
+
+
+
 
 # Remove any existing app installation
 log "Removing any existing installation..."
@@ -49,6 +46,7 @@ cp ./power_monitor "${APP_SUPPORT_DIR}/" || { log "❌ Failed to copy power moni
 # Copy config file
 log "Copying config file..."
 cp "./config.json" "${APP_SUPPORT_DIR}/" || { log "❌ Failed to copy config file"; exit 1; }
+cp ./logging.conf "${APP_SUPPORT_DIR}/" || { log "❌ Failed to copy logging.conf"; exit 1; }
 
 # Create PowerMonitor.app wrapper
 log "Creating PowerMonitor.app wrapper..."
@@ -86,7 +84,7 @@ cd "${APP_SUPPORT_DIR}"
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export HOME="${HOME}"
 export DEBUG=1
-"${APP_SUPPORT_DIR}/power_monitor" &> "${APP_SUPPORT_DIR}/output.log" &
+"${APP_SUPPORT_DIR}/power_monitor" &
 EOL
 chmod +x "${MACOS_DIR}/PowerMonitor"
 
@@ -124,7 +122,7 @@ fi
 
 log "Power monitor installed at: ${APP_SUPPORT_DIR}/power_monitor"
 log "Wrapper app created at: ${POWERMONITOR_APP}"
-log "Logs will be available at: ${APP_SUPPORT_DIR}/error.log and output.log"
+
 
 log "Installation completed successfully!"
 
