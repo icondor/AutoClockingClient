@@ -13,6 +13,5 @@ echo "Verifying installation..."
 LOGIN_ITEMS=$(osascript -e 'tell application "System Events" to get the name of every login item')
 echo "Current login items: $LOGIN_ITEMS"
 
-# Keep terminal window open to see results
-echo -e "\nPress Enter to close this window..."
-read
+(sleep 2; osascript -e 'tell application "Terminal" to close (every window whose name contains "start.command")') &
+exit 0

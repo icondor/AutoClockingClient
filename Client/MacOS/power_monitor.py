@@ -46,7 +46,9 @@ if os.path.exists(config_file):
         config.read(config_file)
         if 'logging' in config:
             log_level = config['logging'].get('level', 'INFO').upper()
-            max_bytes = config['logging'].getint('max_size_mb', 10) * 1024 * 1024
+            max_size_mb = config['logging'].getfloat('max_size_mb', 10.0)  # Handles 0.01 correctly
+            max_bytes = int(max_size_mb * 1024 * 1024)  # Converts MB to bytes
+            logger.info(f"Configured max log size: {max_size_mb} MB ({max_bytes} bytes)")
     except Exception as e:
         print(f"Failed to parse logging.conf: {e}", file=sys.stderr)
 
@@ -143,7 +145,7 @@ class PowerMonitor(NSObject):
                 # )
 
                 process = subprocess.Popen(
-                    ['/bin/bash', '-c', f'"{app_path}" '],
+                    ['/bin/bash', '-c', f'"{app_path}" > /dev/null 2>&1'],
                     cwd=self.app_support,
                     env=env
                 )
@@ -179,23 +181,47 @@ def signal_handler(signum, frame, monitor, lock_fd):
 def ensure_single_instance():
     lock_fd = open(lock_file, 'w')
     try:
+        # Ensure the lock file is writable
+        os.chmod(lock_file, 0o666)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         lock_fd.write(str(os.getpid()))
         lock_fd.flush()
         logger.info(f"Acquired lock, PID: {os.getpid()}")
         return lock_fd
-    except IOError:
-        time.sleep(0.1)
+    except IOError as e:
+        logger.warning(f"Failed to acquire lock on first attempt: {e}")
+        # Retry with exponential backoff
+        for attempt in range(3):
+            time.sleep(2 ** attempt)  # 1s, 2s, 4s
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_fd.write(str(os.getpid()))
+                lock_fd.flush()
+                logger.info(f"Acquired lock after retry {attempt + 1}, PID: {os.getpid()}")
+                return lock_fd
+            except IOError as e:
+                logger.warning(f"Retry {attempt + 1} failed: {e}")
+        # If all retries fail, check the lock file's PID
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            lock_fd.write(str(os.getpid()))
-            lock_fd.flush()
-            logger.info(f"Acquired lock after retry, PID: {os.getpid()}")
-            return lock_fd
-        except IOError:
-            logger.warning("Another instance of power_monitor is already running")
-            lock_fd.close()
-            sys.exit(0)
+            with open(lock_file, 'r') as f:
+                existing_pid = int(f.read().strip())
+            os.kill(existing_pid, 0)  # Test if PID is alive
+            logger.info(f"Confirmed existing power_monitor with PID: {existing_pid}")
+        except (OSError, ValueError) as e:
+            logger.error(f"Stale lock file detected, removing: {e}")
+            os.remove(lock_file)
+            # Retry one last time
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_fd.write(str(os.getpid()))
+                lock_fd.flush()
+                logger.info(f"Acquired lock after removing stale lock, PID: {os.getpid()}")
+                return lock_fd
+            except IOError:
+                logger.error("Failed to acquire lock after removing stale lock")
+        lock_fd.close()
+        logger.warning("Another instance of power_monitor is already running, exiting")
+        sys.exit(0)
 
 if __name__ == "__main__":
     logger.info("Power monitor script starting")

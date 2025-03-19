@@ -44,7 +44,9 @@ if os.path.exists(config_file):
         config.read(config_file)
         if 'logging' in config:
             log_level = config['logging'].get('level', 'INFO').upper()
-            max_bytes = config['logging'].getint('max_size_mb', 10) * 1024 * 1024
+            max_size_mb = config['logging'].getfloat('max_size_mb', 10.0)  # Handles 0.01 correctly
+            max_bytes = int(max_size_mb * 1024 * 1024)  # Converts MB to bytes
+            logger.info(f"Configured max log size: {max_size_mb} MB ({max_bytes} bytes)")
     except Exception as e:
         print(f"[{datetime.datetime.now()}] Failed to parse logging.conf: {e}", file=sys.stderr)
         if os.path.exists(ATT_LOCK_FILE):
